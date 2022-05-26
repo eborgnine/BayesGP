@@ -10,8 +10,12 @@ vignette: >
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  comment = "#>", fig.height=3, fig.width=5, margins=TRUE
 )
+knitr::knit_hooks$set(margins = function(before, options, envir) {
+  if (!before) return()
+  graphics::par(mar = c(1.5 + 0.9, 1.5 + 0.9, 0.2, 0.2), mgp = c(1.45, 0.45, 0), cex = 1.25, bty='n')
+})
 ```
 
 
@@ -46,9 +50,10 @@ We will illustrate the use of O-spline using the Munich rent data from INLA's Rp
 ```{r}
 data <- INLA::Munich %>% select(rent, year)
 head(data, n = 5)
+polyOrder = 4
 ```
 
-Let's study the yearly change of rent in Munich, such that $y_i = f(t_i) + \epsilon_i$ where $\epsilon_i \sim N(0,\sigma^2)$. The unknown function is assumed to be at least once continuously differentiable, so the smoothness order is set to $p=2$.
+Let's study the yearly change of rent in Munich, such that $y_i = f(t_i) + \epsilon_i$ where $\epsilon_i \sim N(0,\sigma^2)$. The unknown function is assumed to be at least $`r polyOrder-1`$ continuously differentiable, so the smoothness order is set to $p=`r polyOrder`$.
 
 We will use PC priors for both the smoothing parameter $\sigma_s$ and the variance parameter $\sigma$.
 
@@ -69,7 +74,7 @@ In this case, the length of unique values of $t$ is only 42, so you can just use
 knots_observed <- sort(unique(data$t))
 
 ### Use equally spaced knots, with 4 years as spacing
-knots_equal <- sort(seq(from = min(data$t), to = max(data$t), by = 4))
+knots_equal <- sort(seq(from = min(data$t), to = max(data$t), by = 0.5))
 
 ```
 Note that since O-spline considers the boundary conditions being exactly zero, so it is important to make sure the first value in your knot sequence is actually the "0" that correponds to the reference point.
@@ -85,10 +90,10 @@ The function `local_poly` will take a sequence of knots and a sequence of points
 ```{r}
 B1 <- local_poly(knots = knots_observed, 
                  refined_x = data$t,
-                 p = 2)
+                 p = polyOrder)
 B2 <- local_poly(knots = knots_equal, 
                  refined_x = data$t,
-                 p = 2)
+                 p = polyOrder)
 ```
 
 The precision matrix of the basis coefficients vector $\boldsymbol{w}$ can be obtained using the function `compute_weights_precision`:
@@ -110,7 +115,7 @@ dim(P2)
 Before we move to the inference, there will be another step, which is to also consider the boundary conditions. For identifiability purpose, the $p$ boundary conditions at $t=0$ are set to be exactly zero for the O-spline basis. However, in many applications, these boundary conditions are unknown and of inferential interests. Therefore, they will be modeled as global polynomials starting at the reference point $t=0$, with polynomials coefficients assigned with Gaussian priors (or fix to constants if knowledge available). Their corresponding design can be created using `global_poly` function.
 
 ```{r}
-X <- global_poly(x = data$t, p = 2)
+X <- global_poly(x = data$t, p = polyOrder)
 dim(X)
 ```
 
@@ -120,7 +125,15 @@ dim(X)
 
 ## Inference
 
-For the inference, let's use the template of TMB/AGHQ:
+Some examples of the TMB templates written in cpp file format can be found and compiled at:
+
+```{r eval=FALSE}
+### Template for Gaussian response:
+system.file("extsrc/OSplines.cpp", package="OSplines")
+```
+
+
+For the inference, let's use the pre-compiled template of TMB/AGHQ:
 
 ```{r}
 tmbdat1 <- list(
@@ -219,12 +232,12 @@ These basis coefficients completely determine the values of $\tilde{f}$ or its d
 f1 <- compute_post_fun(samps = coefsamps1, global_samps = global_samps1, 
                        knots = knots_observed, 
                        refined_x = seq(from = min(data$t), to = max(data$t), by = 1),
-                       p = 2, degree = 0)
+                       p = polyOrder, degree = 0)
 
 f2 <- compute_post_fun(samps = coefsamps2, global_samps = global_samps2, 
                        knots = knots_equal, 
                        refined_x = seq(from = min(data$t), to = max(data$t), by = 1),
-                       p = 2, degree = 0)
+                       p = polyOrder, degree = 0)
 
 
 f1pos <- extract_mean_interval_given_samps(f1)
@@ -233,18 +246,14 @@ f2pos <- extract_mean_interval_given_samps(f2)
 
 Let's check out the result:
 
-```{r}
-f1pos %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), color = "blue") + 
-  geom_ribbon(aes(ymin = plower, ymax = pupper), fill = "orange", alpha = 0.3) +
-  geom_point(aes(x = t, y = rent), alpha = 0.1, data = data) +
-  theme_classic() + xlab("year since 1981") + ylab("rent") +
-  ggtitle("Using observed knots") + ylim(c(5,12))
+```{r, fig.cap="Results", out.width='95%', fig.subcap = c("Observed knots", "Dense knots")}
+plot(data[,c('year','rent')], col='#0000FF40',cex=0.6, xlab="Observed knots")
+matlines((f1pos$x + min(data$year)), f1pos[,c('mean', 'plower','pupper')], lty=c(1,2,2), lwd=c(2,1,1), col='black')
 
-f2pos %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), color = "blue") + 
-  geom_ribbon(aes(ymin = plower, ymax = pupper), fill = "orange", alpha = 0.3) +
-  geom_point(aes(x = t, y = rent), alpha = 0.1, data = data) +
-  theme_classic() + xlab("year since 1981") + ylab("rent") +
-  ggtitle("Using equally spaced knots") + ylim(c(5,12))
+plot(data[,c('year','rent')], col='#0000FF40' ,cex=0.6, xlab = "Dense knots")
+matlines((f2pos$x + min(data$year)), f2pos[,c('mean', 'plower','pupper')], lty=c(1,2,2), lwd=c(2,1,1), col='black')
+
+
 ```
 
 Another advantage of O-spline is we can also recover the model-based inference for the derivative of $f$ using posterior samples of $\boldsymbol{w}$, up to order $p-1$. This can be done using `compute_post_fun` and specify the `degree` argument:
@@ -252,13 +261,13 @@ Another advantage of O-spline is we can also recover the model-based inference f
 ```{r}
 f1deriv <- compute_post_fun(samps = coefsamps1, global_samps = global_samps1, 
                        knots = knots_observed, 
-                       refined_x = seq(from = min(data$t), to = max(data$t), by = 1),
-                       p = 2, degree = 1)
+                       refined_x = seq(from = min(data$t), to = max(data$t), len=2001),
+                       p = polyOrder, degree = 2)
 
 f2deriv <- compute_post_fun(samps = coefsamps2, global_samps = global_samps2, 
                        knots = knots_equal, 
-                       refined_x = seq(from = min(data$t), to = max(data$t), by = 1),
-                       p = 2, degree = 1)
+                       refined_x = seq(from = min(data$t), to = max(data$t), len=2001),
+                       p = polyOrder, degree = 2)
 
 
 f1derivpos <- extract_mean_interval_given_samps(f1deriv)
@@ -271,12 +280,12 @@ We can see the result:
 ```{r}
 f1derivpos %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), color = "blue") + 
   geom_ribbon(aes(ymin = plower, ymax = pupper), fill = "orange", alpha = 0.3) +
-  theme_classic() + xlab("year since 1981") + ylab("rent: rate of change") +
+  theme_classic() + xlab("year since 1981") + ylab("rent: second derivative") +
   ggtitle("Using observed knots")
 
 f2derivpos %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), color = "blue") + 
   geom_ribbon(aes(ymin = plower, ymax = pupper), fill = "orange", alpha = 0.3) +
-  theme_classic() + xlab("year since 1981") + ylab("rent: rate of change") +
+  theme_classic() + xlab("year since 1981") + ylab("rent: second derivative") +
   ggtitle("Using equally spaced knots")
 ```
 
