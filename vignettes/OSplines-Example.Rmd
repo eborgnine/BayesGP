@@ -127,11 +127,17 @@ dim(X)
 
 Some examples of the TMB templates written in cpp file format can be found and compiled at:
 
-```{r eval=FALSE}
+```{r}
 ### Template for Gaussian response:
 system.file("extsrc/OSplines.cpp", package="OSplines")
 ```
 
+```{r eval=FALSE}
+### compiling and loading the template:
+### To run while in the directory with the file "OSplines.cpp":
+compile("OSplines.cpp")
+dyn.load(dynlib("OSplines"))
+```
 
 For the inference, let's use the pre-compiled template of TMB/AGHQ:
 
