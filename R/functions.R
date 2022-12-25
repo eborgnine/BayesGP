@@ -140,10 +140,10 @@ extract_mean_interval_given_samps <- function(samps, level = 0.95){
 
 #' Construct prior based on d-step prediction SD.
 #'
-#' @param prior A list that contains a and u. This specifies the target prior on the d-step SD \equ{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.
+#' @param prior A list that contains a and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.
 #' @param d A numeric value for the prediction step.
 #' @param p An integer for the order of IWP.
-#' @return A list that contains a and u. The prior for the smoothness parameter \equ{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
+#' @return A list that contains a and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
 #' @export
 prior_conversion <- function(d, prior, p){
   Cp <- (d^((2*p) - 1))/(((2*p)-1)*(factorial(p-1)^2))
