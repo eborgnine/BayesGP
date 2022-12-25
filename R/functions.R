@@ -59,7 +59,6 @@ global_poly <- function(x, p = 2){
 #' @examples
 #' compute_weights_precision(x = c(0,0.2,0.4,0.6,0.8))
 #' @export
-
 compute_weights_precision <- function(x){
   d <- diff(x)
   Precweights <- diag(d)
@@ -126,7 +125,6 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
 #' @return A dataframe with a column for evaluation locations x, and posterior mean and pointwise
 #' intervals at that set of locations.
 #' @export
-
 extract_mean_interval_given_samps <- function(samps, level = 0.95){
   x <- samps[,1]
   samples <- samps[,-1]
@@ -137,6 +135,25 @@ extract_mean_interval_given_samps <- function(samps, level = 0.95){
   result$mean <- as.numeric(apply(samples, MARGIN = 1, mean))
   result
 }
+
+
+
+#' Construct prior based on d-step prediction SD.
+#'
+#' @param prior A list that contains a and u. This specifies the target prior on the d-step SD \equ{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.
+#' @param d A numeric value for the prediction step.
+#' @param p An integer for the order of IWP.
+#' @return A list that contains a and u. The prior for the smoothness parameter \equ{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
+#' @export
+prior_conversion <- function(d, prior, p){
+  Cp <- (d^((2*p) - 1))/(((2*p)-1)*(factorial(p-1)^2))
+  prior_q <- list(a = prior$a, u = (prior$u * (1 /sqrt(Cp))))
+  prior_q
+}
+
+
+
+
 
 
 #' Roxygen commands
