@@ -1,0 +1,189 @@
+---
+title: "OSplines-Example"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{OSplines-Example}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>", fig.height = 3, fig.width = 5, margins = TRUE
+)
+knitr::knit_hooks$set(margins = function(before, options, envir) {
+  if (!before) {
+    return()
+  }
+  graphics::par(mar = c(1.5 + 0.9, 1.5 + 0.9, 0.2, 0.2), mgp = c(1.45, 0.45, 0), cex = 1.25, bty = "n")
+})
+```
+
+
+```{r setup}
+library(OSplines)
+library(tidyverse)
+library(Matrix)
+library(TMB)
+library(aghq)
+```
+
+# Idea of O-Spline approximation
+Let $f(t)$ be the unknown function that we want to infer, and assume it is already known that $f$ is at least $p$-1 times continuously differentiable.
+
+Consider the smoothing model:
+$$\frac{\partial^p{f}(t)}{\partial t^p} = \sigma_sW(t),$$
+with the boundary (initial) conditions that $\frac{\partial^q{f}(0)}{\partial t^q} = 0$ for all $0\leq q <p$.
+Here $W(t)$ is the standard Gaussian white noise process, or can be viewed as the distributional derivative of the standard Brownian motion.
+
+This kind of smoothing model is referred to as Integrated Wiener's process (IWP), and both the O-spline method and the commonly used continuous RW2 method consider its finite dimensional approximation in the following form:
+$$\tilde{f}(t) = \sum_{i=1}^{k} w_i\varphi_i(t),$$
+where $\boldsymbol{w} = (w_1, ..., w_k)^T$ is the vector of Gaussian coefficients, and $\varphi_i$ is basis function defined at the $i$th knot.
+
+The main target of inference is therefore the Gaussian coefficients vector $\boldsymbol{w}$, which will have a diagonal precision matrix under the O-spline construction.
+
+# Example of Munich Data
+
+## Data and Model
+
+We will illustrate the use of O-spline using the Munich rent data from INLA's Rpackage:
+
+```{r}
+data <- INLA::Munich %>% select(rent, year)
+head(data, n = 5)
+polyOrder <- 4
+```
+
+Let's study the yearly change of rent in Munich, such that $y_i = f(t_i) + \epsilon_i$ where $\epsilon_i \sim N(0,\sigma^2)$. The unknown function is assumed to be at least $`r polyOrder-1`$ continuously differentiable, so the smoothness order is set to $p=`r polyOrder`$.
+
+We will use PC priors for both the smoothing parameter $\sigma_s$ and the variance parameter $\sigma$.
+
+## Setup the design and precision matrix
+
+Note that the range of $t$ is from $1918$ to $2001$, to make it consistent with the definition of $t$ in the O-spline construction, we should center $t$ so $t$ starts at $0$. This is equivalent to setting the year $1918$ as the reference year. Note if you don't want to set the reference point at the starting point, but instead want to set it at the middle like $1990$, you can center all the years using $1990$ and treat the negative $t$ as another IWP reaching out to the opposite direction.
+
+```{r}
+### Initialization
+data$t <- data$year - min(data$year)
+length(unique(data$t))
+```
+
+In this case, the length of unique values of $t$ is only 42, so you can just use the observed unique locations as the knots. But in practice if this number is too large, you should choose an equally spaced knot sequence over the region of interest, with much smaller number. Let's do both ways!
+
+```{r}
+### Use the observed locations as knots
+knots_observed <- sort(unique(data$t))
+
+### Use equally spaced knots, with 4 years as spacing
+knots_equal <- sort(seq(from = min(data$t), to = max(data$t), by = 0.5))
+```
+Note that since O-spline considers the boundary conditions being exactly zero, so it is important to make sure the first value in your knot sequence is actually the "0" that correponds to the reference point.
+
+```{r}
+knots_observed[1]
+knots_equal[1]
+```
+Given the set of knots, we can easily construct the basis function $\varphi_i$ and the precision matrix of $\boldsymbol{w}$.
+
+```{r}
+fit_result_1 <- model_fit(rent ~ f(smoothing_var = year, model = "IWP", order = polyOrder, knots = knots_observed), data = data, method = "aghq", family = "Gaussian")
+fit_result_2 <- model_fit(rent ~ f(smoothing_var = year, model = "IWP", order = polyOrder, knots = knots_equal), data = data, method = "aghq", family = "Gaussian")
+
+names(fit_result_1)
+IWP1 <- fit_result_1$instance
+mod1 <- fit_result_1$mod
+IWP2 <- fit_result_2$instance
+mod2 <- fit_result_2$mod
+
+slotNames(IWP1)
+names(mod1)
+```
+## Inference
+Now, let's obtain the posterior samples of $\boldsymbol{w}$ for O spline basis and $\boldsymbol{\beta}$ for global polynomials:
+
+```{r}
+samps1 <- sample_marginal(mod1, M = 3000)
+global_samps1 <- samps1$samps[(ncol(IWP1@B) + 1):nrow(samps1$samps), ]
+coefsamps1 <- samps1$samps[1:ncol(IWP1@B), ]
+
+samps2 <- sample_marginal(mod2, M = 3000)
+global_samps2 <- samps2$samps[(ncol(IWP2@B) + 1):nrow(samps2$samps), ]
+coefsamps2 <- samps2$samps[1:ncol(IWP2@B), ]
+```
+
+These basis coefficients completely determine the values of $\tilde{f}$ or its derivative. We can do the posterior conversion using `compute_post_fun`, and `extract_mean_interval_given_samps` can compute the posterior mean and pointwise interval given the posterior samples:
+
+```{r}
+f1 <- compute_post_fun(
+  samps = coefsamps1, global_samps = global_samps1,
+  knots = knots_observed,
+  refined_x = seq(from = min(data$t), to = max(data$t), by = 1),
+  p = polyOrder, degree = 0
+)
+
+f2 <- compute_post_fun(
+  samps = coefsamps2, global_samps = global_samps2,
+  knots = knots_equal,
+  refined_x = seq(from = min(data$t), to = max(data$t), by = 1),
+  p = polyOrder, degree = 0
+)
+
+
+f1pos <- extract_mean_interval_given_samps(f1)
+f2pos <- extract_mean_interval_given_samps(f2)
+```
+
+Let's check out the result:
+
+```{r, fig.cap="Results", out.width='95%', fig.subcap = c("Observed knots", "Dense knots")}
+plot(data[, c("year", "rent")], col = "#0000FF40", cex = 0.6, xlab = "Observed knots")
+matlines((f1pos$x + min(data$year)), f1pos[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), col = "black")
+
+plot(data[, c("year", "rent")], col = "#0000FF40", cex = 0.6, xlab = "Dense knots")
+matlines((f2pos$x + min(data$year)), f2pos[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), col = "black")
+```
+
+Another advantage of O-spline is we can also recover the model-based inference for the derivative of $f$ using posterior samples of $\boldsymbol{w}$, up to order $p-1$. This can be done using `compute_post_fun` and specify the `degree` argument:
+
+```{r}
+f1deriv <- compute_post_fun(
+  samps = coefsamps1, global_samps = global_samps1,
+  knots = knots_observed,
+  refined_x = seq(from = min(data$t), to = max(data$t), len = 2001),
+  p = polyOrder, degree = 2
+)
+
+f2deriv <- compute_post_fun(
+  samps = coefsamps2, global_samps = global_samps2,
+  knots = knots_equal,
+  refined_x = seq(from = min(data$t), to = max(data$t), len = 2001),
+  p = polyOrder, degree = 2
+)
+
+
+f1derivpos <- extract_mean_interval_given_samps(f1deriv)
+f2derivpos <- extract_mean_interval_given_samps(f2deriv)
+```
+
+
+We can see the result:
+
+```{r}
+f1derivpos %>% ggplot(aes(x = x)) +
+  geom_line(aes(y = mean), color = "blue") +
+  geom_ribbon(aes(ymin = plower, ymax = pupper), fill = "orange", alpha = 0.3) +
+  theme_classic() +
+  xlab("year since 1981") +
+  ylab("rent: second derivative") +
+  ggtitle("Using observed knots")
+
+f2derivpos %>% ggplot(aes(x = x)) +
+  geom_line(aes(y = mean), color = "blue") +
+  geom_ribbon(aes(ymin = plower, ymax = pupper), fill = "orange", alpha = 0.3) +
+  theme_classic() +
+  xlab("year since 1981") +
+  ylab("rent: second derivative") +
+  ggtitle("Using equally spaced knots")
+```
+
