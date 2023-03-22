@@ -102,9 +102,9 @@ setMethod("get_result_by_method", signature = "IWP", function(object) {
   result_P <- compute_weights_precision(object)
   tmbdat <- list(
     # Design matrix
-    X = as(result_X, "dgTMatrix"),
-    B = as(result_B, "dgTMatrix"),
-    P = as(result_P, "dgTMatrix"),
+    X = dgTMatrix_wrapper(result_X),
+    B = dgTMatrix_wrapper(result_B),
+    P = dgTMatrix_wrapper(result_P),
     logPdet = as.numeric(determinant(result_P, logarithm = TRUE)$modulus),
     # Response
     y = (object@data)$rent,
@@ -118,7 +118,7 @@ setMethod("get_result_by_method", signature = "IWP", function(object) {
     betaprec = 0.01
   )
   tmbparams <- list(
-    W = c(rep(0, (ncol(as(result_X, "dgTMatrix")) + ncol(result_B)))), # W = c(U,beta); U = Spline coefficients
+    W = c(rep(0, (ncol(dgTMatrix_wrapper(result_X)) + ncol(result_B)))), # W = c(U,beta); U = Spline coefficients
     theta1 = 0, # -2log(sigma)
     theta2 = 0
   )
@@ -245,7 +245,7 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
     X[, i] <- (factorial(i + degree - 1) / factorial(i - 1)) * X[, i]
   }
   ## Design matrix for the spline basis weights
-  B <- as(local_poly_helper(knots, refined_x = refined_x, p = (p - degree)), "dgTMatrix")
+  B <- dgTMatrix_wrapper(local_poly_helper(knots, refined_x = refined_x, p = (p - degree)))
   fitted_samps_deriv <- X %*% global_samps[(1 + degree):p, ] + B %*% samps
   result <- cbind(x = refined_x, data.frame(as.matrix(fitted_samps_deriv)))
   result
@@ -284,6 +284,13 @@ prior_conversion <- function(d, prior, p) {
   prior_q <- list(a = prior$a, u = (prior$u * (1 / sqrt(Cp))))
   prior_q
 }
+
+
+dgTMatrix_wrapper <- function(matrix) {
+  result <- as(as(as(matrix, "dMatrix"),  "generalMatrix"), "TsparseMatrix")
+  result
+}
+
 
 
 #' Roxygen commands
