@@ -89,22 +89,27 @@ Given the set of knots, we can easily construct the basis function $\varphi_i$ a
 ```{r}
 fit_result_1 <- model_fit(rent ~ f(smoothing_var = year, model = "IWP", order = polyOrder, knots = knots_observed), data = data, method = "aghq", family = "Gaussian")
 fit_result_2 <- model_fit(rent ~ f(smoothing_var = year, model = "IWP", order = polyOrder, knots = knots_equal), data = data, method = "aghq", family = "Gaussian")
+
+names(fit_result_1)
 IWP1 <- fit_result_1$instance
 mod1 <- fit_result_1$mod
 IWP2 <- fit_result_2$instance
 mod2 <- fit_result_2$mod
+
+slotNames(IWP1)
+names(mod1)
 ```
 ## Inference
 Now, let's obtain the posterior samples of $\boldsymbol{w}$ for O spline basis and $\boldsymbol{\beta}$ for global polynomials:
 
 ```{r}
 samps1 <- sample_marginal(mod1, M = 3000)
-global_samps1 <- samps1$samps[(ncol(local_poly(IWP1)) + 1):nrow(samps1$samps), ]
-coefsamps1 <- samps1$samps[1:ncol(local_poly(IWP1)), ]
+global_samps1 <- samps1$samps[(ncol(IWP1@B) + 1):nrow(samps1$samps), ]
+coefsamps1 <- samps1$samps[1:ncol(IWP1@B), ]
 
 samps2 <- sample_marginal(mod2, M = 3000)
-global_samps2 <- samps2$samps[(ncol(local_poly(IWP2)) + 1):nrow(samps2$samps), ]
-coefsamps2 <- samps2$samps[1:ncol(local_poly(IWP2)), ]
+global_samps2 <- samps2$samps[(ncol(IWP2@B) + 1):nrow(samps2$samps), ]
+coefsamps2 <- samps2$samps[1:ncol(IWP2@B), ]
 ```
 
 These basis coefficients completely determine the values of $\tilde{f}$ or its derivative. We can do the posterior conversion using `compute_post_fun`, and `extract_mean_interval_given_samps` can compute the posterior mean and pointwise interval given the posterior samples:

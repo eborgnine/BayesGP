@@ -14,9 +14,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
   model_class <- model_call_comps$model
   order <- eval(model_call_comps$order)
   knots <- eval(model_call_comps$knots)
-  IWP_instance <- new(model_class, smoothing_var = smoothing_var, order = order, knots = knots, data = data)
-  mod <- get_result_by_method(IWP_instance)
-  return(list(instance = IWP_instance, mod = mod))
+  instance <- new(model_class, smoothing_var = smoothing_var, order = order, knots = knots, data = data)
+  # Case for IWP
+  instance@X <- global_poly(instance)
+  instance@B <- local_poly(instance)
+  instance@P <- compute_weights_precision(instance)
+  mod <- get_result_by_method(instance)
+  return(list(instance = instance, mod = mod))
 }
 
 # Create a class for IWP using S4
@@ -31,7 +35,8 @@ setGeneric("local_poly", function(object) {
 })
 setMethod("local_poly", signature = "IWP", function(object) {
   knots <- object@knots
-  refined_x <- (object@data)$year - min((object@data)$year)
+  smoothing_var <- object@smoothing_var
+  refined_x <- (object@data)[[smoothing_var]] - min((object@data)[[smoothing_var]])
   p <- object@order
   dif <- diff(knots)
   nn <- length(refined_x)
@@ -49,7 +54,6 @@ setMethod("local_poly", signature = "IWP", function(object) {
       }
     }
   }
-  # object <- initialize(object, B = D)
   D
 })
 
@@ -58,14 +62,13 @@ setGeneric("global_poly", function(object) {
   standardGeneric("global_poly")
 })
 setMethod("global_poly", signature = "IWP", function(object) {
-  x <- (object@data)$year - min((object@data)$year)
+  smoothing_var <- object@smoothing_var
+  x <- (object@data)[[smoothing_var]] - min((object@data)[[smoothing_var]])
   p <- object@order
   result <- NULL
   for (i in 1:p) {
     result <- cbind(result, x^(i - 1))
   }
-  # object@X <- result
-  # object <- initialize(object, X = result)
   result
 })
 
@@ -84,8 +87,6 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
   x <- object@knots
   d <- diff(x)
   Precweights <- diag(d)
-  # object@P <- Precweights
-  # object <- initialize(object, P = Precweights)
   Precweights
 })
 
@@ -94,18 +95,12 @@ setGeneric("get_result_by_method", function(object) {
   standardGeneric("get_result_by_method")
 })
 setMethod("get_result_by_method", signature = "IWP", function(object) {
-  # system.file("../src/Osplines.cpp", package="OSplines")
-  # compile("../src/Osplines.cpp")
-  # dyn.load(dynlib("OSplines"))
-  result_X <- global_poly(object)
-  result_B <- local_poly(object)
-  result_P <- compute_weights_precision(object)
   tmbdat <- list(
     # Design matrix
-    X = dgTMatrix_wrapper(result_X),
-    B = dgTMatrix_wrapper(result_B),
-    P = dgTMatrix_wrapper(result_P),
-    logPdet = as.numeric(determinant(result_P, logarithm = TRUE)$modulus),
+    X = dgTMatrix_wrapper(object@X),
+    B = dgTMatrix_wrapper(object@B),
+    P = dgTMatrix_wrapper(object@P),
+    logPdet = as.numeric(determinant(object@P, logarithm = TRUE)$modulus),
     # Response
     y = (object@data)$rent,
     # PC Prior params
@@ -118,7 +113,7 @@ setMethod("get_result_by_method", signature = "IWP", function(object) {
     betaprec = 0.01
   )
   tmbparams <- list(
-    W = c(rep(0, (ncol(dgTMatrix_wrapper(result_X)) + ncol(result_B)))), # W = c(U,beta); U = Spline coefficients
+    W = c(rep(0, (ncol(dgTMatrix_wrapper(object@X)) + ncol(object@B)))), # W = c(U,beta); U = Spline coefficients
     theta1 = 0, # -2log(sigma)
     theta2 = 0
   )
@@ -189,12 +184,6 @@ global_poly_helper <- function(x, p = 2) {
   result
 }
 
-
-# compute_weights_precision <- function(x){
-#   d <- diff(x)
-#   Precweights <- diag(d)
-#   Precweights
-# }
 
 #' Computing the posterior samples of the function or its derivative using the posterior samples
 #' of the basis coefficients
@@ -287,7 +276,7 @@ prior_conversion <- function(d, prior, p) {
 
 
 dgTMatrix_wrapper <- function(matrix) {
-  result <- as(as(as(matrix, "dMatrix"),  "generalMatrix"), "TsparseMatrix")
+  result <- as(as(as(matrix, "dMatrix"), "generalMatrix"), "TsparseMatrix")
   result
 }
 
