@@ -7,25 +7,47 @@ library(aghq)
 #' @export
 model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
   # parse the input formula
-  formula_comps <- as.list(formula)
-  model_call <- formula_comps[[3]]
-  model_call_comps <- as.list(model_call)
-  smoothing_var <- model_call_comps$smoothing_var
-  model_class <- model_call_comps$model
-  order <- eval(model_call_comps$order)
-  knots <- eval(model_call_comps$knots)
-  instance <- new(model_class, smoothing_var = smoothing_var, order = order, knots = knots, data = data)
-  # Case for IWP
-  instance@X <- global_poly(instance)
-  instance@B <- local_poly(instance)
-  instance@P <- compute_weights_precision(instance)
+  parse_result <- parse_formula(formula)
+  print(parse_result$rand_effects[[1]])
+  response_var <- parse_result$response
+  rand_effects <- parse_result$rand_effects
+  instances <- c()
+  for (rand_effect in rand_effects){
+    smoothing_var <- rand_effect$smoothing_var
+    model_class <- rand_effect$model
+    order <- eval(rand_effect$order)
+    knots <- eval(rand_effect$knots)
+    instance <- new(model_class, response_var = response_var, 
+                    smoothing_var = smoothing_var, order = order, 
+                    knots = knots, data = data)
+    # Case for IWP
+    instance@X <- global_poly(instance)
+    instance@B <- local_poly(instance)
+    instance@P <- compute_weights_precision(instance)
+    instances <- c(instances, c(instance))
+  }
   mod <- get_result_by_method(instance)
-  return(list(instance = instance, mod = mod))
+  return(list(instances = instances, mod = mod))
+}
+
+parse_formula <- function(formula) {
+  components <- as.list(attributes(terms(formula)) $ variables)
+  fixed_effects <- c()
+  rand_effects <- c()
+  for (i in 3 : length(components)){
+      if (startsWith(toString(components[[i]]), "f,")){
+        rand_effects <- c(rand_effects, c(components[[i]]))
+      }
+      else{
+        fixed_effects <- c(fixed_effects, c(components[[i]]))
+      }
+  }
+  return(list(response = components[[2]], fixed_effects = fixed_effects, rand_effects = rand_effects))
 }
 
 # Create a class for IWP using S4
 setClass("IWP", slots = list(
-  smoothing_var = "name", order = "numeric", knots = "numeric",
+  response_var = "name", smoothing_var = "name", order = "numeric", knots = "numeric",
   data = "data.frame", X = "matrix", B = "matrix", P = "matrix"
 ))
 
@@ -102,7 +124,7 @@ setMethod("get_result_by_method", signature = "IWP", function(object) {
     P = dgTMatrix_wrapper(object@P),
     logPdet = as.numeric(determinant(object@P, logarithm = TRUE)$modulus),
     # Response
-    y = (object@data)$rent,
+    y = (object@data)[[object@response_var]],
     # PC Prior params
     # (u1, alpha1) for sigma_s
     # (u2, alpha2) for sigma
