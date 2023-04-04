@@ -11,7 +11,12 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
   print(parse_result$rand_effects[[1]])
   response_var <- parse_result$response
   rand_effects <- parse_result$rand_effects
-  instances <- c()
+  fixed_effects <- parse_result$fixed_effects
+
+  instances <- list()
+  design_mat_fixed <- list()
+
+  # For random effects
   for (rand_effect in rand_effects){
     smoothing_var <- rand_effect$smoothing_var
     model_class <- rand_effect$model
@@ -21,25 +26,38 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
                     smoothing_var = smoothing_var, order = order, 
                     knots = knots, data = data)
     # Case for IWP
-    instance@X <- global_poly(instance)
+    instance@X <- global_poly(instance)[, -1, drop = FALSE]
     instance@B <- local_poly(instance)
     instance@P <- compute_weights_precision(instance)
-    instances <- c(instances, c(instance))
+    instances[[length(instances) + 1]] <- instance
   }
-  mod <- get_result_by_method(instance)
-  return(list(instances = instances, mod = mod))
+  
+  # For the intercept
+  Xf0 = matrix(1, nrow = nrow(data), ncol = 1)
+  design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf0
+
+  # For fixed effects
+  for (fixed_effect in fixed_effects){
+    Xf = matrix(data[[fixed_effect]], nrow = nrow(data), ncol = 1)
+    design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf
+  }
+
+  mod <- get_result_by_method(instances, design_mat_fixed)
+  return(list(instances = instances, design_mat_fixed = design_mat_fixed, mod = mod))
 }
 
 parse_formula <- function(formula) {
   components <- as.list(attributes(terms(formula)) $ variables)
-  fixed_effects <- c()
-  rand_effects <- c()
+  fixed_effects <- list()
+  rand_effects <- list()
+  # Index starts as 3 since index 1 represents "list" and 
+  # index 2 represents the response variable
   for (i in 3 : length(components)){
       if (startsWith(toString(components[[i]]), "f,")){
-        rand_effects <- c(rand_effects, c(components[[i]]))
+        rand_effects[[length(rand_effects) + 1]] <- components[[i]]
       }
       else{
-        fixed_effects <- c(fixed_effects, c(components[[i]]))
+        fixed_effects[[length(fixed_effects) + 1]] <- components[[i]]
       }
   }
   return(list(response = components[[2]], fixed_effects = fixed_effects, rand_effects = rand_effects))
@@ -113,31 +131,54 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-setGeneric("get_result_by_method", function(object) {
-  standardGeneric("get_result_by_method")
-})
-setMethod("get_result_by_method", signature = "IWP", function(object) {
+# setGeneric("get_result_by_method", function(object) {
+#   standardGeneric("get_result_by_method")
+# })
+# setMethod("get_result_by_method", signature = "IWP", function(object) {
+get_result_by_method <- function(instances, design_mat_fixed) {
   tmbdat <- list(
     # Design matrix
-    X = dgTMatrix_wrapper(object@X),
-    B = dgTMatrix_wrapper(object@B),
-    P = dgTMatrix_wrapper(object@P),
-    logPdet = as.numeric(determinant(object@P, logarithm = TRUE)$modulus),
-    # Response
-    y = (object@data)[[object@response_var]],
-    # PC Prior params
-    # (u1, alpha1) for sigma_s
-    # (u2, alpha2) for sigma
+    # For RE 1
+    X1 = dgTMatrix_wrapper(instances[[1]]@X),
+    B1 = dgTMatrix_wrapper(instances[[1]]@B),
+    P1 = dgTMatrix_wrapper(instances[[1]]@P),
+    logP1det = as.numeric(determinant(instances[[1]]@P, logarithm = TRUE)$modulus),
     u1 = 1,
     alpha1 = 0.5,
-    u2 = 1,
-    alpha2 = 0.5,
-    betaprec = 0.01
+    betaprec1 = 0.01,
+
+    # For RE 2
+    X2 = dgTMatrix_wrapper(instances[[2]]@X),
+    B2 = dgTMatrix_wrapper(instances[[2]]@B),
+    P2 = dgTMatrix_wrapper(instances[[2]]@P),
+    logP2det = as.numeric(determinant(instances[[2]]@P, logarithm = TRUE)$modulus),
+    u2 = 5,
+    alpha2 = 0.1,
+    betaprec2 = 0.02,
+
+    # For Fixed Effects:
+    beta_fixed_prec0 = 0.1,
+    beta_fixed_prec1 = 0.2,
+    beta_fixed_prec2 = 0.2,
+    Xf0 = dgTMatrix_wrapper(design_mat_fixed[[1]]),
+    Xf1 = dgTMatrix_wrapper(design_mat_fixed[[2]]),
+    Xf2 = dgTMatrix_wrapper(design_mat_fixed[[3]]),
+
+    # Response
+    y = (instances[[1]]@data)[[instances[[1]]@response_var]],
+    
+   ## For the variance of the Gaussian family
+    u3 = 1,
+    alpha3 = 0.5
   )
+
   tmbparams <- list(
-    W = c(rep(0, (ncol(dgTMatrix_wrapper(object@X)) + ncol(object@B)))), # W = c(U,beta); U = Spline coefficients
-    theta1 = 0, # -2log(sigma)
-    theta2 = 0
+    W = c(rep(0, (ncol(instances[[1]]@X) + ncol(instances[[1]]@B) + ncol(instances[[2]]@X) 
+                  + ncol(instances[[2]]@B) + ncol(design_mat_fixed[[1]]) 
+                  + ncol(design_mat_fixed[[2]]) + ncol(design_mat_fixed[[3]])))), # recall W is everything in the model (RE or FE)
+    theta1 = 0, # RE1
+    theta2 = 0, # RE2
+    theta3 = 0 # Gaussian variance
   )
 
   ff <- TMB::MakeADFun(
@@ -150,10 +191,10 @@ setMethod("get_result_by_method", signature = "IWP", function(object) {
 
   # Hessian not implemented for RE models
   ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
-  mod <- aghq::marginal_laplace_tmb(ff, 4, c(0, 0))
+  mod <- aghq::marginal_laplace_tmb(ff, 4, c(0, 0, 0))
 
   mod
-})
+}
 
 
 #' Constructing and evaluating the local O-spline basis (design matrix)
