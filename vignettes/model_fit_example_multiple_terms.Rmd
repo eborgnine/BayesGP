@@ -1,0 +1,128 @@
+---
+title: "OSplines-Example"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{OSplines-Example}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>", fig.height = 3, fig.width = 5, margins = TRUE
+)
+knitr::knit_hooks$set(margins = function(before, options, envir) {
+  if (!before) {
+    return()
+  }
+  graphics::par(mar = c(1.5 + 0.9, 1.5 + 0.9, 0.2, 0.2), mgp = c(1.45, 0.45, 0), cex = 1.25, bty = "n")
+})
+```
+
+
+```{r setup}
+library(OSplines)
+library(tidyverse)
+library(Matrix)
+library(TMB)
+library(aghq)
+```
+
+# Idea of O-Spline approximation
+Let $f(t)$ be the unknown function that we want to infer, and assume it is already known that $f$ is at least $p$-1 times continuously differentiable.
+
+Consider the smoothing model:
+$$\frac{\partial^p{f}(t)}{\partial t^p} = \sigma_sW(t),$$
+with the boundary (initial) conditions that $\frac{\partial^q{f}(0)}{\partial t^q} = 0$ for all $0\leq q <p$.
+Here $W(t)$ is the standard Gaussian white noise process, or can be viewed as the distributional derivative of the standard Brownian motion.
+
+This kind of smoothing model is referred to as Integrated Wiener's process (IWP), and both the O-spline method and the commonly used continuous RW2 method consider its finite dimensional approximation in the following form:
+$$\tilde{f}(t) = \sum_{i=1}^{k} w_i\varphi_i(t),$$
+where $\boldsymbol{w} = (w_1, ..., w_k)^T$ is the vector of Gaussian coefficients, and $\varphi_i$ is basis function defined at the $i$th knot.
+
+The main target of inference is therefore the Gaussian coefficients vector $\boldsymbol{w}$, which will have a diagonal precision matrix under the O-spline construction.
+
+# Example of Munich Data
+
+## Data and Model
+
+We will illustrate the use of O-spline using the Munich rent data from INLA's Rpackage:
+
+```{r}
+### A model with two IWP and two Fixed effects:
+data <- INLA::Munich %>% select(rent, floor.size, year, location)
+data$score <- rnorm(n = nrow(data))
+head(data, n = 5)
+polyOrder1 = 2 ## Assume f(floor.size) is second order IWP 
+polyOrder2 = 3 ## Assume f(year) is third order IWP
+```
+
+
+
+```{r}
+### Initialization(should be done internally)
+data$floor.size.0 <- data$floor.size - min(data$floor.size)
+data$year.0 <- data$year - min(data$year)
+
+
+## Let's create equally spaced knots for both year and floor.size:
+knots_equal_size <- sort(seq(from = min(data$floor.size.0), to = max(data$floor.size.0), by = 5))
+knots_equal_year <- sort(seq(from = min(data$year.0), to = max(data$year.0), by = 1))
+```
+
+Given the set of knots, we can easily construct the basis function $\varphi_i$ and the precision matrix of $\boldsymbol{w}$.
+
+```{r}
+fit_result <- model_fit(rent ~ location + f(smoothing_var = floor.size, model = "IWP", order = polyOrder1, knots = knots_equal_size) + score + f(smoothing_var = year, model = "IWP", order = polyOrder2, knots = knots_equal_year), data = data, method = "aghq", family = "Gaussian")
+```
+
+```{r}
+names(fit_result)
+IWP1 <- fit_result$instances[[1]]
+IWP2 <- fit_result$instances[[2]]
+mod <- fit_result$mod
+
+slotNames(IWP1)
+names(mod)
+```
+### Let's take out some samples:
+```{r}
+samps <- aghq::sample_marginal(mod, M = 3000)
+global_samps1 <- samps$samps[(ncol(IWP1@B) + ncol(IWP2@B) + 1):(ncol(IWP1@B) + ncol(IWP2@B) + ncol(IWP1@X)), , drop = F]
+coefsamps1 <- samps$samps[1:ncol(IWP1@B),]
+
+global_samps2 <- samps$samps[(ncol(IWP1@B) + ncol(IWP2@B) + ncol(IWP1@X) + 1):(ncol(IWP1@B) + ncol(IWP2@B) + ncol(IWP1@X) + ncol(IWP2@X)),]
+coefsamps2 <- samps$samps[(1 + ncol(IWP1@B)) : (ncol(IWP2@B) + ncol(IWP1@B)),]
+
+fixed_samps <- samps$samps[(ncol(IWP1@B) + ncol(IWP2@B) + ncol(IWP1@X) + ncol(IWP2@X) + 1): nrow(samps$samps) ,]
+
+
+## For now, let's just stick back the intercept back to each global_samps so we can still use the function compute_post_fun
+## we should probably change the code of compute_post_fun to account that global_samps should not contain the intercept anymore..
+global_samps1 <- rbind(fixed_samps[1,,drop = F], global_samps1)
+global_samps2 <- rbind(fixed_samps[1,,drop = F], global_samps2)
+
+f1 <- compute_post_fun(samps = coefsamps1, global_samps = global_samps1, 
+                       knots = knots_equal_size, 
+                       refined_x = seq(from = min(data$floor.size.0), to = max(data$floor.size.0), by = 1),
+                       p = polyOrder1, degree = 0)
+
+f2 <- compute_post_fun(samps = coefsamps2, global_samps = global_samps2, 
+                       knots = knots_equal_year, 
+                       refined_x = seq(from = min(data$year.0), to = max(data$year.0), by = 1),
+                       p = polyOrder2, degree = 0)
+
+f1pos <- extract_mean_interval_given_samps(f1)
+f2pos <- extract_mean_interval_given_samps(f2)
+
+
+plot(data[,c('floor.size','rent')], col='#0000FF40',cex=0.6, xlab="Rent vs Size")
+matlines((f1pos$x + min(data$floor.size)), f1pos[,c('mean', 'plower','pupper')], lty=c(1,2,2), lwd=c(2,1,1), col='black')
+
+plot(data[,c('year','rent')], col='#0000FF40' ,cex=0.6, xlab = "Rent vs Year")
+matlines((f2pos$x + min(data$year)), f2pos[,c('mean', 'plower','pupper')], lty=c(1,2,2), lwd=c(2,1,1), col='black')
+
+fixed_samps %>% apply(1, mean)
+fixed_samps %>% apply(1, sd)
+```

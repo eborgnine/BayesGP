@@ -131,45 +131,57 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-# setGeneric("get_result_by_method", function(object) {
-#   standardGeneric("get_result_by_method")
-# })
-# setMethod("get_result_by_method", signature = "IWP", function(object) {
 get_result_by_method <- function(instances, design_mat_fixed) {
-  tmbdat <- list(
-    # Design matrix
-    # For RE 1
-    X1 = dgTMatrix_wrapper(instances[[1]]@X),
-    B1 = dgTMatrix_wrapper(instances[[1]]@B),
-    P1 = dgTMatrix_wrapper(instances[[1]]@P),
-    logP1det = as.numeric(determinant(instances[[1]]@P, logarithm = TRUE)$modulus),
-    u1 = 1,
-    alpha1 = 0.5,
-    betaprec1 = 0.01,
+  # Containers for random effects
+  X <- list()
+  B <- list()
+  P <- list()
+  logPdet <- list()
+  u <- list()
+  alpha <- list()
+  betaprec <- list()
 
-    # For RE 2
-    X2 = dgTMatrix_wrapper(instances[[2]]@X),
-    B2 = dgTMatrix_wrapper(instances[[2]]@B),
-    P2 = dgTMatrix_wrapper(instances[[2]]@P),
-    logP2det = as.numeric(determinant(instances[[2]]@P, logarithm = TRUE)$modulus),
-    u2 = 5,
-    alpha2 = 0.1,
-    betaprec2 = 0.02,
+  # Containers for fixed effects
+  beta_fixed_prec <- list()
+  Xf <- list()
+
+  for (instance in instances){
+    # For each random effects
+    X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
+    B[[length(B) + 1]] <- dgTMatrix_wrapper(instance@B)
+    P[[length(P) + 1]] <- dgTMatrix_wrapper(instance@P)
+    logPdet[[length(logPdet) + 1]] <- as.numeric(determinant(instance@P, logarithm = TRUE)$modulus)
+    u[[length(u) + 1]] <- 1
+    alpha[[length(alpha) + 1]] <- 0.5
+    betaprec[[length(betaprec) + 1]] <- 0.01
+  }
+  
+  # For the variance of the Gaussian family
+  u[[length(u) + 1]] <- 1
+  alpha[[length(alpha) + 1]] <- 0.5
+
+  for (i in 1 : length(design_mat_fixed)){
+    # For each fixed effects
+    beta_fixed_prec[[i]] <- 0.02
+    Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
+  }
+
+  tmbdat <- list(
+    # For Random effects
+    X = X,
+    B = B,
+    P = P,
+    logPdet = logPdet,
+    u = u,
+    alpha = alpha,
+    betaprec = betaprec,
 
     # For Fixed Effects:
-    beta_fixed_prec0 = 0.1,
-    beta_fixed_prec1 = 0.2,
-    beta_fixed_prec2 = 0.2,
-    Xf0 = dgTMatrix_wrapper(design_mat_fixed[[1]]),
-    Xf1 = dgTMatrix_wrapper(design_mat_fixed[[2]]),
-    Xf2 = dgTMatrix_wrapper(design_mat_fixed[[3]]),
+    beta_fixed_prec = beta_fixed_prec,
+    Xf = Xf,
 
     # Response
-    y = (instances[[1]]@data)[[instances[[1]]@response_var]],
-    
-   ## For the variance of the Gaussian family
-    u3 = 1,
-    alpha3 = 0.5
+    y = (instances[[1]]@data)[[instances[[1]]@response_var]]
   )
 
   tmbparams <- list(
