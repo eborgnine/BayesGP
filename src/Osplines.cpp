@@ -1,5 +1,4 @@
-#include <TMB.hpp>                                // Links in the TMB libraries
-//#include <fenv.h>
+#include <TMB.hpp>
 #include <string>
 using namespace tmbutils;
 
@@ -80,17 +79,16 @@ Type objective_function<Type>::operator() ()
   for (int i=0;i<beta_fixed_dim1;i++) beta_fixed1(i) = W(i + d1 + d2 + betadim1 + betadim2 + beta_fixed_dim0);
   for (int i=0;i<beta_fixed_dim2;i++) beta_fixed2(i) = W(i + d1 + d2 + betadim1 + betadim2 + beta_fixed_dim0 + beta_fixed_dim1);
 
-  PARAMETER(theta1); // theta = -2log(sigma1), for RE1
-  PARAMETER(theta2); // theta = -2log(sigma2), for RE2
-  PARAMETER(theta3); // theta = -2log(sigma3), for variance of Gaussian family 
+  // The last element is for the variance of Gaussian family 
+  PARAMETER_VECTOR(theta);
 
   // Transformations
   vector<Type> eta = X(0) * beta1 + X(1) * beta2 + B(0) * U1 + B(1) * U2 + Xf(0) * beta_fixed0 + Xf(1) * beta_fixed1 + Xf(2) * beta_fixed2;
-  Type sigma1 = exp(-0.5*theta1);
+  Type sigma1 = exp(-0.5*theta(0));
   REPORT(sigma1);
-  Type sigma2 = exp(-0.5*theta2);
+  Type sigma2 = exp(-0.5*theta(1));
   REPORT(sigma2);
-  Type sigma3 = exp(-0.5*theta3);
+  Type sigma3 = exp(-0.5*theta(2));
   REPORT(sigma3);
 
 
@@ -107,21 +105,21 @@ Type objective_function<Type>::operator() ()
   // RE1:
   vector<Type> P1U1 = P(0) * U1;
   Type U1P1U1 = (U1 * P1U1).sum();
-  lpW += -0.5 * exp(theta1) * U1P1U1; // U part
+  lpW += -0.5 * exp(theta(0)) * U1P1U1; // U part
   Type bb1 = (beta1 * beta1).sum();
   lpW += -0.5 * betaprec(0) * bb1; // Beta part
   // Log determinant
-  Type logdet1 = d1 * theta1 + logPdet(0);
+  Type logdet1 = d1 * theta(0) + logPdet(0);
   lpW += 0.5 * logdet1; // P part
 
   // RE2:
   vector<Type> P2U2 = P(1) * U2;
   Type U2P2U2 = (U2 * P2U2).sum();
-  lpW += -0.5 * exp(theta2) * U2P2U2; // U part
+  lpW += -0.5 * exp(theta(1)) * U2P2U2; // U part
   Type bb2 = (beta2 * beta2).sum();
   lpW += -0.5 * betaprec(1) * bb2; // Beta part
   // Log determinant
-  Type logdet2 = d2 * theta2 + logPdet(1);
+  Type logdet2 = d2 * theta(1) + logPdet(1);
   lpW += 0.5 * logdet2; // P part
 
   // Fixed Effects;
@@ -137,15 +135,15 @@ Type objective_function<Type>::operator() ()
   Type lpT = 0;
   // Variance of RE1
   Type phi1 = -log(alpha(0)) / u(0);
-  lpT += log(0.5 * phi1) - phi1*exp(-0.5*theta1) - 0.5*theta1;
+  lpT += log(0.5 * phi1) - phi1*exp(-0.5*theta(0)) - 0.5*theta(0);
 
   // Variance of RE2
   Type phi2 = -log(alpha(1)) / u(1);
-  lpT += log(0.5 * phi2) - phi2*exp(-0.5*theta2) - 0.5*theta2;
+  lpT += log(0.5 * phi2) - phi2*exp(-0.5*theta(1)) - 0.5*theta(1);
 
   // Variance of the Gaussian family
   Type phi3 = -log(alpha(2)) / u(2);
-  lpT += log(0.5 * phi3) - phi3*exp(-0.5*theta3) - 0.5*theta3;
+  lpT += log(0.5 * phi3) - phi3*exp(-0.5*theta(2)) - 0.5*theta(2);
   
   // Final result!
   Type logpost = -1 * (ll + lpW + lpT);

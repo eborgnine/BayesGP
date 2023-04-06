@@ -144,6 +144,11 @@ get_result_by_method <- function(instances, design_mat_fixed) {
   beta_fixed_prec <- list()
   Xf <- list()
 
+  w_count <- 0
+  # Need a theta for the Gaussian variance, so
+  # theta_count starts at 1
+  theta_count <- 1
+
   for (instance in instances){
     # For each random effects
     X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
@@ -153,6 +158,8 @@ get_result_by_method <- function(instances, design_mat_fixed) {
     u[[length(u) + 1]] <- 1
     alpha[[length(alpha) + 1]] <- 0.5
     betaprec[[length(betaprec) + 1]] <- 0.01
+    w_count <- w_count + ncol(instance@X) + ncol(instance@B)
+    theta_count <- theta_count + 1
   }
   
   # For the variance of the Gaussian family
@@ -163,6 +170,7 @@ get_result_by_method <- function(instances, design_mat_fixed) {
     # For each fixed effects
     beta_fixed_prec[[i]] <- 0.02
     Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
+    w_count <- w_count + ncol(design_mat_fixed[[i]])
   }
 
   tmbdat <- list(
@@ -184,12 +192,8 @@ get_result_by_method <- function(instances, design_mat_fixed) {
   )
 
   tmbparams <- list(
-    W = c(rep(0, (ncol(instances[[1]]@X) + ncol(instances[[1]]@B) + ncol(instances[[2]]@X) 
-                  + ncol(instances[[2]]@B) + ncol(design_mat_fixed[[1]]) 
-                  + ncol(design_mat_fixed[[2]]) + ncol(design_mat_fixed[[3]])))), # recall W is everything in the model (RE or FE)
-    theta1 = 0, # RE1
-    theta2 = 0, # RE2
-    theta3 = 0 # Gaussian variance
+    W = c(rep(0, w_count)), # recall W is everything in the model (RE or FE)
+    theta = c(rep(0, theta_count))
   )
 
   ff <- TMB::MakeADFun(
@@ -202,7 +206,7 @@ get_result_by_method <- function(instances, design_mat_fixed) {
 
   # Hessian not implemented for RE models
   ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
-  mod <- aghq::marginal_laplace_tmb(ff, 4, c(0, 0, 0))
+  mod <- aghq::marginal_laplace_tmb(ff, 4, c(rep(0, theta_count)))
 
   mod
 }
