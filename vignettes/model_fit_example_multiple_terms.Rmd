@@ -74,7 +74,11 @@ knots_equal_year <- sort(seq(from = min(data$year.0), to = max(data$year.0), by 
 Given the set of knots, we can easily construct the basis function $\varphi_i$ and the precision matrix of $\boldsymbol{w}$.
 
 ```{r}
-fit_result <- model_fit(rent ~ location + f(smoothing_var = floor.size, model = "IWP", order = polyOrder1, knots = knots_equal_size) + score + f(smoothing_var = year, model = "IWP", order = polyOrder2, knots = knots_equal_year), data = data, method = "aghq", family = "Gaussian")
+fit_result <- model_fit(rent ~ location + f(smoothing_var = floor.size, model = "IWP", 
+                                            order = polyOrder1, knots = knots_equal_size) 
+                              + score + f(smoothing_var = year, model = "IWP", 
+                                          order = polyOrder2, knots = knots_equal_year), 
+                        data = data, method = "aghq", family = "Gaussian")
 ```
 
 ```{r}

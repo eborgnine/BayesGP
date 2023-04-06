@@ -8,7 +8,6 @@ library(aghq)
 model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
   # parse the input formula
   parse_result <- parse_formula(formula)
-  print(parse_result$rand_effects[[1]])
   response_var <- parse_result$response
   rand_effects <- parse_result$rand_effects
   fixed_effects <- parse_result$fixed_effects
