@@ -16,28 +16,30 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
   design_mat_fixed <- list()
 
   # For random effects
-  for (rand_effect in rand_effects){
+  for (rand_effect in rand_effects) {
     smoothing_var <- rand_effect$smoothing_var
     model_class <- rand_effect$model
     order <- eval(rand_effect$order)
     knots <- eval(rand_effect$knots)
-    instance <- new(model_class, response_var = response_var, 
-                    smoothing_var = smoothing_var, order = order, 
-                    knots = knots, data = data)
+    instance <- new(model_class,
+      response_var = response_var,
+      smoothing_var = smoothing_var, order = order,
+      knots = knots, data = data
+    )
     # Case for IWP
     instance@X <- global_poly(instance)[, -1, drop = FALSE]
     instance@B <- local_poly(instance)
     instance@P <- compute_weights_precision(instance)
     instances[[length(instances) + 1]] <- instance
   }
-  
+
   # For the intercept
-  Xf0 = matrix(1, nrow = nrow(data), ncol = 1)
+  Xf0 <- matrix(1, nrow = nrow(data), ncol = 1)
   design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf0
 
   # For fixed effects
-  for (fixed_effect in fixed_effects){
-    Xf = matrix(data[[fixed_effect]], nrow = nrow(data), ncol = 1)
+  for (fixed_effect in fixed_effects) {
+    Xf <- matrix(data[[fixed_effect]], nrow = nrow(data), ncol = 1)
     design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf
   }
 
@@ -46,18 +48,17 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
 }
 
 parse_formula <- function(formula) {
-  components <- as.list(attributes(terms(formula)) $ variables)
+  components <- as.list(attributes(terms(formula))$ variables)
   fixed_effects <- list()
   rand_effects <- list()
-  # Index starts as 3 since index 1 represents "list" and 
+  # Index starts as 3 since index 1 represents "list" and
   # index 2 represents the response variable
-  for (i in 3 : length(components)){
-      if (startsWith(toString(components[[i]]), "f,")){
-        rand_effects[[length(rand_effects) + 1]] <- components[[i]]
-      }
-      else{
-        fixed_effects[[length(fixed_effects) + 1]] <- components[[i]]
-      }
+  for (i in 3:length(components)) {
+    if (startsWith(toString(components[[i]]), "f,")) {
+      rand_effects[[length(rand_effects) + 1]] <- components[[i]]
+    } else {
+      fixed_effects[[length(fixed_effects) + 1]] <- components[[i]]
+    }
   }
   return(list(response = components[[2]], fixed_effects = fixed_effects, rand_effects = rand_effects))
 }
@@ -149,7 +150,7 @@ get_result_by_method <- function(instances, design_mat_fixed) {
   # theta_count starts at 1
   theta_count <- 1
 
-  for (instance in instances){
+  for (instance in instances) {
     # For each random effects
     X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
     B[[length(B) + 1]] <- dgTMatrix_wrapper(instance@B)
@@ -161,12 +162,13 @@ get_result_by_method <- function(instances, design_mat_fixed) {
     w_count <- w_count + ncol(instance@X) + ncol(instance@B)
     theta_count <- theta_count + 1
   }
-  
+
   # For the variance of the Gaussian family
+  # From control.family, if applicable
   u[[length(u) + 1]] <- 1
   alpha[[length(alpha) + 1]] <- 0.5
 
-  for (i in 1 : length(design_mat_fixed)){
+  for (i in 1:length(design_mat_fixed)) {
     # For each fixed effects
     beta_fixed_prec[[i]] <- 0.02
     Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
