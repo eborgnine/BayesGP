@@ -35,8 +35,8 @@ Type objective_function<Type>::operator() ()
   DATA_STRUCT(P, list_SparseMatrix_from_R); // Penalty matrix
   DATA_STRUCT(logPdet, list_Scalar_from_R); // Determinant of (fixed) penalty matrix
 
-  // The last element of u and the last element of alpha are for the
-  // Gaussian Family. (An extra variance parameter)
+  // The last element of u and the last element of alpha are for the family
+  // (For example: the Gaussian noise variance when family = "Gaussian")
   DATA_STRUCT(u, list_Scalar_from_R);       // Pc prior, u param
   DATA_STRUCT(alpha, list_Scalar_from_R);   // Pc prior, alpha param
   DATA_STRUCT(betaprec, list_Scalar_from_R);// For boundary, beta ~iid N(0,1/betaprec)
@@ -50,7 +50,7 @@ Type objective_function<Type>::operator() ()
   vector<int> betadim(X.size());
   int sum_betadim = 0;
   for (int i = 0; i < X.size(); i++){
-    betadim(i) = X(i).cols(); // Number of boundary conditions in RE
+    betadim(i) = X(i).cols(); // Number of boundary conditions in RE #i
     sum_betadim += betadim(i);
   }
 
@@ -124,30 +124,30 @@ Type objective_function<Type>::operator() ()
   PARAMETER_VECTOR(theta);
 
   // Transformations
-  vector<Type> eta = X(0) * beta(0);
+  vector<Type> eta = X(0) * beta(0); // adding intercept
 
   for (int i = 1; i < X.size(); i++){
-    eta += X(i) * beta(i);
+    eta += X(i) * beta(i);  // adding each boundary condition for RE
   }
 
   for (int i = 0; i < B.size(); i++){
-    eta += B(i) * U(i);
+    eta += B(i) * U(i); // adding each local spline effect for RE
   }
 
   for (int i = 0; i < Xf.size(); i++){
-    eta += Xf(i) * beta_fixed(i);
+    eta += Xf(i) * beta_fixed(i); // adding each fixed effect
   }
 
   vector<Type> sigma(theta.size());
   for (int i = 0; i < theta.size(); i++){
-    sigma(i) = exp(-0.5*theta(i));
+    sigma(i) = exp(-0.5*theta(i)); // transforming each variance parameter (from log precision to standard deviation)
     REPORT(sigma(i));
   }
 
 
   // Log likelihood
   Type ll = 0;
-  ll = sum(dnorm(y, eta, sigma(theta.size() - 1), TRUE));
+  ll = sum(dnorm(y, eta, sigma(theta.size() - 1), TRUE)); 
   REPORT(ll);
   
 
@@ -156,9 +156,9 @@ Type objective_function<Type>::operator() ()
   // Cross product (for each RE and its boundary, and for fixed effect)
   // For Random Effects:
   for (int i = 0; i < X.size(); i++){
-    lpW += -0.5 * exp(theta(i)) * ((U(i) * (P(i) * U(i))).sum()); // U part
+    lpW += -0.5 * exp(theta(i)) * ((U(i) * (P(i) * U(i))).sum()); // U part (spline effect)
     Type bb = (beta(i) * beta(i)).sum();
-    lpW += -0.5 * betaprec(i) * bb; // Beta part
+    lpW += -0.5 * betaprec(i) * bb; // Beta part (boundary condition)
     // Log determinant
     Type logdet = d(i) * theta(i) + logPdet(i);
     lpW += 0.5 * logdet; // P part
@@ -166,13 +166,13 @@ Type objective_function<Type>::operator() ()
 
   // For Fixed Effects;
   for (int i = 0; i < beta_fixed.size(); i++){
-    Type bbf = (beta_fixed(i) * beta_fixed(i)).sum();
+    Type bbf = (beta_fixed(i) * beta_fixed(i)).sum(); // Fixed effect
     lpW += -0.5 * beta_fixed_prec(i) * bbf; //
   }
 
   // Log prior for theta
   Type lpT = 0;
-  // Variance of each random effect and the Gaussian family
+  // Variance of each random effect (and the family)
   for (int i = 0; i < alpha.size(); i++){
     Type phi = -log(alpha(i)) / u(i);
     lpT += log(0.5 * phi) - phi*exp(-0.5*theta(i)) - 0.5*theta(i);
