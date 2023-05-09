@@ -5,7 +5,7 @@ library(aghq)
 
 
 #' @export
-model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
+model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed) {
   # parse the input formula
   parse_result <- parse_formula(formula)
   response_var <- parse_result$response
@@ -21,11 +21,36 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
     model_class <- rand_effect$model
     order <- eval(rand_effect$order)
     knots <- eval(rand_effect$knots)
+    k <- eval(rand_effect$k)
+    sd.prior <- eval(rand_effect$sd.prior)
+    boundary.prior <- eval(rand_effect$boundary.prior)
+    # If the user does not specify knots, compute knots with
+    # the parameter k
+    if (is.null(knots)) {
+      initialized_smoothing_var <- data[[smoothing_var]] - min(data[[smoothing_var]])
+      default_k <- 5
+      if (is.null(k)) {
+        knots <- sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = default_k))
+      } else {
+        knots <- sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = k))
+      }
+    }
+    refined_x <- seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = 1)
+
+    if (is.null(sd.prior)) {
+      sd.prior <- list(prior = "exp", para = list(u = 1, alpha = 0.5))
+    }
+
+    if (is.null(boundary.prior)) {
+      boundary.prior <- list(prec = 0.01)
+    }
+
     instance <- new(model_class,
       response_var = response_var,
       smoothing_var = smoothing_var, order = order,
-      knots = knots, data = data
+      knots = knots, refined_x = refined_x, sd.prior = sd.prior, boundary.prior = boundary.prior, data = data
     )
+
     # Case for IWP
     instance@X <- global_poly(instance)[, -1, drop = FALSE]
     instance@B <- local_poly(instance)
@@ -43,8 +68,46 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian") {
     design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf
   }
 
-  mod <- get_result_by_method(instances, design_mat_fixed)
-  return(list(instances = instances, design_mat_fixed = design_mat_fixed, mod = mod))
+  if (missing(control.family)) {
+    control.family <- list(sd_prior = list(prior = "exp", para = list(u = 1, alpha = 0.5)))
+  }
+
+  if (missing(control.fixed)) {
+    control.fixed <- list(intercept = list(prec = 0.01))
+    for (fixed_effect in fixed_effects) {
+      control.fixed$fixed_effect <- list(prec = 0.01)
+    }
+  }
+
+  mod <- get_result_by_method(instances, design_mat_fixed, control.family, control.fixed, fixed_effects)
+  samps <- aghq::sample_marginal(mod, M = 3000)
+  global_samp_indexes <- list()
+  coef_samp_indexes <- list()
+  sum_col_ins <- 0
+  for (instance in instances) {
+    sum_col_ins <- sum_col_ins + ncol(instance@B)
+  }
+
+  cur_start <- sum_col_ins + 1
+  cur_end <- sum_col_ins
+  cur_coef_start <- 1
+  cur_coef_end <- 0
+  for (instance in instances) {
+    cur_end <- cur_end + ncol(instance@X)
+    cur_coef_end <- cur_coef_end + ncol(instance@B)
+    global_samp_indexes[[length(global_samp_indexes) + 1]] <- (cur_start:cur_end)
+    coef_samp_indexes[[length(coef_samp_indexes) + 1]] <- (cur_coef_start:cur_coef_end)
+    cur_start <- cur_end + 1
+    cur_coef_start <- cur_coef_end + 1
+  }
+
+  fixed_samp_index <- ((cur_end + 1):nrow(samps$samps))
+  return(list(
+    instances = instances, design_mat_fixed = design_mat_fixed, mod = mod,
+    global_samp_indexes = global_samp_indexes,
+    coef_samp_indexes = coef_samp_indexes,
+    fixed_samp_index = fixed_samp_index
+  ))
 }
 
 parse_formula <- function(formula) {
@@ -65,8 +128,10 @@ parse_formula <- function(formula) {
 
 # Create a class for IWP using S4
 setClass("IWP", slots = list(
-  response_var = "name", smoothing_var = "name", order = "numeric", knots = "numeric",
-  data = "data.frame", X = "matrix", B = "matrix", P = "matrix"
+  response_var = "name", smoothing_var = "name", order = "numeric",
+  knots = "numeric", refined_x = "numeric", sd.prior = "list",
+  boundary.prior = "list", data = "data.frame", X = "matrix",
+  B = "matrix", P = "matrix"
 ))
 
 
@@ -131,7 +196,7 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-get_result_by_method <- function(instances, design_mat_fixed) {
+get_result_by_method <- function(instances, design_mat_fixed, control.family, control.fixed, fixed_effects) {
   # Containers for random effects
   X <- list()
   B <- list()
@@ -156,21 +221,25 @@ get_result_by_method <- function(instances, design_mat_fixed) {
     B[[length(B) + 1]] <- dgTMatrix_wrapper(instance@B)
     P[[length(P) + 1]] <- dgTMatrix_wrapper(instance@P)
     logPdet[[length(logPdet) + 1]] <- as.numeric(determinant(instance@P, logarithm = TRUE)$modulus)
-    u[[length(u) + 1]] <- 1
-    alpha[[length(alpha) + 1]] <- 0.5
-    betaprec[[length(betaprec) + 1]] <- 0.01
+    u[[length(u) + 1]] <- instance@sd.prior$para$u
+    alpha[[length(alpha) + 1]] <- instance@sd.prior$para$alpha
+    betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
     w_count <- w_count + ncol(instance@X) + ncol(instance@B)
     theta_count <- theta_count + 1
   }
 
   # For the variance of the Gaussian family
   # From control.family, if applicable
-  u[[length(u) + 1]] <- 1
-  alpha[[length(alpha) + 1]] <- 0.5
+  u[[length(u) + 1]] <- control.family$sd_prior$para$u
+  alpha[[length(alpha) + 1]] <- control.family$sd_prior$para$alpha
 
   for (i in 1:length(design_mat_fixed)) {
     # For each fixed effects
-    beta_fixed_prec[[i]] <- 0.02
+    if (i == 1) {
+      beta_fixed_prec[[i]] <- control.fixed$intercept$prec
+    } else {
+      beta_fixed_prec[[i]] <- control.fixed[[fixed_effects[[i - 1]]]]$prec
+    }
     Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
     w_count <- w_count + ncol(design_mat_fixed[[i]])
   }

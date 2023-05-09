@@ -58,32 +58,25 @@ polyOrder1 <- 2 ## Assume f(floor.size) is second order IWP
 polyOrder2 <- 3 ## Assume f(year) is third order IWP
 ```
 
-
-
-```{r}
-### Initialization(should be done internally)
-data$floor.size.0 <- data$floor.size - min(data$floor.size)
-data$year.0 <- data$year - min(data$year)
-
-
-## Let's create equally spaced knots for both year and floor.size:
-knots_equal_size <- sort(seq(from = min(data$floor.size.0), to = max(data$floor.size.0), by = 5))
-knots_equal_year <- sort(seq(from = min(data$year.0), to = max(data$year.0), by = 1))
-```
-
 Given the set of knots, we can easily construct the basis function $\varphi_i$ and the precision matrix of $\boldsymbol{w}$.
 
 ```{r}
 fit_result <- model_fit(
   rent ~ location + f(
-    smoothing_var = floor.size, model = "IWP",
-    order = polyOrder1, knots = knots_equal_size
+    smoothing_var = floor.size,
+    model = "IWP",
+    order = polyOrder1
   )
   + score + f(
-      smoothing_var = year, model = "IWP",
-      order = polyOrder2, knots = knots_equal_year
+      smoothing_var = year,
+      model = "IWP",
+      order = polyOrder2, k = 1,
+      sd.prior = list(prior = "exp", para = list(u = 1, alpha = 0.5)),
+      boundary.prior = list(prec = 0.01)
     ),
-  data = data, method = "aghq", family = "Gaussian"
+  data = data, method = "aghq", family = "Gaussian",
+  control.family = list(sd_prior = list(prior = "exp", para = list(u = 1, alpha = 0.5))),
+  control.fixed = list(intercept = list(prec = 0.01), location = list(prec = 0.01), score = list(prec = 0.01))
 )
 ```
 
@@ -99,13 +92,17 @@ names(mod)
 ### Let's take out some samples:
 ```{r}
 samps <- aghq::sample_marginal(mod, M = 3000)
-global_samps1 <- samps$samps[(ncol(IWP1@B) + ncol(IWP2@B) + 1):(ncol(IWP1@B) + ncol(IWP2@B) + ncol(IWP1@X)), , drop = F]
-coefsamps1 <- samps$samps[1:ncol(IWP1@B), ]
+global_samp_indexes <- fit_result$global_samp_indexes
+coef_samp_indexes <- fit_result$coef_samp_indexes
+fixed_samp_indexes <- fit_result$fixed_samp_index
 
-global_samps2 <- samps$samps[(ncol(IWP1@B) + ncol(IWP2@B) + ncol(IWP1@X) + 1):(ncol(IWP1@B) + ncol(IWP2@B) + ncol(IWP1@X) + ncol(IWP2@X)), ]
-coefsamps2 <- samps$samps[(1 + ncol(IWP1@B)):(ncol(IWP2@B) + ncol(IWP1@B)), ]
+global_samps1 <- samps$samps[global_samp_indexes[[1]], , drop = F]
+coefsamps1 <- samps$samps[coef_samp_indexes[[1]], ]
 
-fixed_samps <- samps$samps[(ncol(IWP1@B) + ncol(IWP2@B) + ncol(IWP1@X) + ncol(IWP2@X) + 1):nrow(samps$samps),, drop = F ]
+global_samps2 <- samps$samps[global_samp_indexes[[2]], , drop = F]
+coefsamps2 <- samps$samps[coef_samp_indexes[[2]], ]
+
+fixed_samps <- samps$samps[fixed_samp_indexes, , drop = F]
 
 
 ## For now, let's just stick back the intercept back to each global_samps so we can still use the function compute_post_fun
@@ -115,15 +112,15 @@ global_samps2 <- rbind(fixed_samps[1, , drop = F], global_samps2)
 
 f1 <- compute_post_fun(
   samps = coefsamps1, global_samps = global_samps1,
-  knots = knots_equal_size,
-  refined_x = seq(from = min(data$floor.size.0), to = max(data$floor.size.0), by = 1),
+  knots = IWP1@knots,
+  refined_x = IWP1@refined_x,
   p = polyOrder1, degree = 0
 )
 
 f2 <- compute_post_fun(
   samps = coefsamps2, global_samps = global_samps2,
-  knots = knots_equal_year,
-  refined_x = seq(from = min(data$year.0), to = max(data$year.0), by = 1),
+  knots = IWP2@knots,
+  refined_x = IWP2@refined_x,
   p = polyOrder2, degree = 0
 )
 
