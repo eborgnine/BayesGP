@@ -277,7 +277,7 @@ get_result_by_method <- function(instances, design_mat_fixed, control.family, co
 
   # Hessian not implemented for RE models
   ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
-  mod <- aghq::marginal_laplace_tmb(ff, 4, c(rep(0, theta_count)))
+  mod <- aghq::marginal_laplace_tmb(ff, 4, c(rep(0, theta_count))) # set 4 as the default value of aghq_K
 
   mod
 }
