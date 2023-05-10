@@ -30,13 +30,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       initialized_smoothing_var <- data[[smoothing_var]] - min(data[[smoothing_var]])
       default_k <- 5
       if (is.null(k)) {
-        knots <- sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = default_k))
+        knots <- sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = default_k)) # should be length.out
       } else {
-        knots <- sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = k))
+        knots <- sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = k))
       }
     }
-    refined_x <- seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = 1)
-
+    # refined_x <- seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = 1) # this is not correct
+    refined_x <- initialized_smoothing_var # for this step, we will just use initialized_smoothing_var as refined_x
     if (is.null(sd.prior)) {
       sd.prior <- list(prior = "exp", para = list(u = 1, alpha = 0.5))
     }
@@ -80,7 +80,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   }
 
   mod <- get_result_by_method(instances, design_mat_fixed, control.family, control.fixed, fixed_effects)
-  samps <- aghq::sample_marginal(mod, M = 3000)
+  samps <- aghq::sample_marginal(mod, M = 3000) # this step should be avoided
   global_samp_indexes <- list()
   coef_samp_indexes <- list()
   sum_col_ins <- 0
@@ -101,7 +101,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     cur_coef_start <- cur_coef_end + 1
   }
 
-  fixed_samp_index <- ((cur_end + 1):nrow(samps$samps))
+  fixed_samp_index <- ((cur_end + 1):nrow(samps$samps)) # should just use the length of W instead of nrow(samps$samps)
   return(list(
     instances = instances, design_mat_fixed = design_mat_fixed, mod = mod,
     global_samp_indexes = global_samp_indexes,
