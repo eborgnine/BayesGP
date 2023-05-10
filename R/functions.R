@@ -36,7 +36,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       }
     }
     # refined_x <- seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = 1) # this is not correct
-    refined_x <- initialized_smoothing_var # for this step, we will just use initialized_smoothing_var as refined_x
+    refined_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
     if (is.null(sd.prior)) {
       sd.prior <- list(prior = "exp", para = list(u = 1, alpha = 0.5))
     }

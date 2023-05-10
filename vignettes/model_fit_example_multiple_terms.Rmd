@@ -70,7 +70,7 @@ fit_result <- model_fit(
   + score + f(
       smoothing_var = year,
       model = "IWP",
-      order = polyOrder2, k = 1, # should add a checker for k >= 3
+      order = polyOrder2, k = 10, # should add a checker for k >= 3
       sd.prior = list(prior = "exp", para = list(u = 1, alpha = 0.5)),
       boundary.prior = list(prec = 0.01)
     ),
