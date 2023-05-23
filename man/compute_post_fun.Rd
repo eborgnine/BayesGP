@@ -33,17 +33,17 @@ Computing the posterior samples of the function or its derivative using the post
 of the basis coefficients
 }
 \examples{
-knots <- c(0,0.2,0.4,0.6)
-samps <- matrix(rnorm(n = (3*10)), ncol = 10)
-result <- compute_post_fun(samps = samps, knots = knots, refined_x = seq(0,1, by = 0.1), p = 2)
-plot(result[,2]~result$x, type = 'l', ylim = c(-0.3,0.3))
+knots <- c(0, 0.2, 0.4, 0.6)
+samps <- matrix(rnorm(n = (3 * 10)), ncol = 10)
+result <- compute_post_fun(samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
+plot(result[, 2] ~ result$x, type = "l", ylim = c(-0.3, 0.3))
 for (i in 1:9) {
-  lines(result[,(i+1)]~result$x, lty = 'dashed', ylim = c(-0.1,0.1))
+  lines(result[, (i + 1)] ~ result$x, lty = "dashed", ylim = c(-0.1, 0.1))
 }
-global_samps <- matrix(rnorm(n = (2*10), sd = 0.1), ncol = 10)
-result <- compute_post_fun(global_samps = global_samps, samps = samps, knots = knots, refined_x = seq(0,1, by = 0.1), p = 2)
-plot(result[,2]~result$x, type = 'l', ylim = c(-0.3,0.3))
+global_samps <- matrix(rnorm(n = (2 * 10), sd = 0.1), ncol = 10)
+result <- compute_post_fun(global_samps = global_samps, samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
+plot(result[, 2] ~ result$x, type = "l", ylim = c(-0.3, 0.3))
 for (i in 1:9) {
-  lines(result[,(i+1)]~result$x, lty = 'dashed', ylim = c(-0.1,0.1))
+  lines(result[, (i + 1)] ~ result$x, lty = "dashed", ylim = c(-0.1, 0.1))
 }
 }

@@ -4,7 +4,7 @@
 \alias{compute_weights_precision}
 \title{Constructing the precision matrix given the knot sequence}
 \usage{
-compute_weights_precision(x)
+compute_weights_precision(object)
 }
 \arguments{
 \item{x}{A vector of knots used to construct the O-spline basis, first knot should be viewed as "0",
@@ -16,7 +16,4 @@ size (k-1) by (k-1).
 }
 \description{
 Constructing the precision matrix given the knot sequence
-}
-\examples{
-compute_weights_precision(x = c(0,0.2,0.4,0.6,0.8))
 }

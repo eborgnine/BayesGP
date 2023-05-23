@@ -24,9 +24,6 @@ knitr::knit_hooks$set(margins = function(before, options, envir) {
 ```{r setup}
 library(OSplines)
 library(tidyverse)
-library(Matrix)
-library(TMB)
-library(aghq)
 ```
 
 # Idea of O-Spline approximation
