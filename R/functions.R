@@ -62,10 +62,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   Xf0 <- matrix(1, nrow = nrow(data), ncol = 1)
   design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf0
 
+
+  fixed_effects_names <- c("Intercept")
   # For fixed effects
   for (fixed_effect in fixed_effects) {
     Xf <- matrix(data[[fixed_effect]], nrow = nrow(data), ncol = 1)
     design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf
+    fixed_effects_names <- c(fixed_effects_names, fixed_effect)
   }
 
   if (missing(control.family)) {
@@ -79,13 +82,18 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     }
   }
 
-  mod <- get_result_by_method(instances, design_mat_fixed, control.family, control.fixed, fixed_effects)
-  samps <- aghq::sample_marginal(mod, M = 3000) # this step should be avoided
+  result_by_method <- get_result_by_method(instances, design_mat_fixed, control.family, control.fixed, fixed_effects)
+  mod <- result_by_method$mod
+  w_count <- result_by_method$w_count
+
   global_samp_indexes <- list()
   coef_samp_indexes <- list()
+  fixed_samp_indexes <- list()
+  rand_effects_names <- c()
   sum_col_ins <- 0
   for (instance in instances) {
     sum_col_ins <- sum_col_ins + ncol(instance@B)
+    rand_effects_names <- c(rand_effects_names, instance@smoothing_var)
   }
 
   cur_start <- sum_col_ins + 1
@@ -100,13 +108,20 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     cur_start <- cur_end + 1
     cur_coef_start <- cur_coef_end + 1
   }
+  names(global_samp_indexes) <- rand_effects_names
+  names(coef_samp_indexes) <- rand_effects_names
 
-  fixed_samp_index <- ((cur_end + 1):nrow(samps$samps)) # should just use the length of W instead of nrow(samps$samps)
+  for (fixed_samp_index in ((cur_end + 1):w_count)) {
+    fixed_samp_indexes[[length(fixed_samp_indexes) + 1]] <- fixed_samp_index
+  }
+
+  names(fixed_samp_indexes) <- fixed_effects_names
+
   return(list(
     instances = instances, design_mat_fixed = design_mat_fixed, mod = mod,
-    global_samp_indexes = global_samp_indexes,
-    coef_samp_indexes = coef_samp_indexes,
-    fixed_samp_index = fixed_samp_index
+    boundary_samp_indexes = global_samp_indexes,
+    random_samp_indexes = coef_samp_indexes,
+    fixed_samp_indexes = fixed_samp_indexes
   ))
 }
 
@@ -196,7 +211,7 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-get_result_by_method <- function(instances, design_mat_fixed, control.family, control.fixed, fixed_effects) {
+get_result_by_method <- function(instances, design_mat_fixed, control.family, control.fixed, fixed_effects, aghq_k = 4) {
   # Containers for random effects
   X <- list()
   B <- list()
@@ -277,9 +292,9 @@ get_result_by_method <- function(instances, design_mat_fixed, control.family, co
 
   # Hessian not implemented for RE models
   ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
-  mod <- aghq::marginal_laplace_tmb(ff, 4, c(rep(0, theta_count))) # set 4 as the default value of aghq_K
+  mod <- aghq::marginal_laplace_tmb(ff, aghq_k, c(rep(0, theta_count))) # The default value of aghq_k is 4
 
-  mod
+  return(list(mod = mod, w_count = w_count))
 }
 
 

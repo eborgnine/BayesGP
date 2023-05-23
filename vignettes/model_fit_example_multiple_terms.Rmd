@@ -92,30 +92,19 @@ names(mod)
 ### Let's take out some samples:
 ```{r}
 samps <- aghq::sample_marginal(mod, M = 3000)
-global_samp_indexes <- fit_result$global_samp_indexes
-coef_samp_indexes <- fit_result$coef_samp_indexes
-fixed_samp_indexes <- fit_result$fixed_samp_index
 
-## Ideally, we could name each of the indices vector:
-## i.e. coefsamps1 <- samps$samps[coef_samp_indexes[fit_result$coef_samp_indexes$floor.size, ]
-## i.e. global_samps1 <- samps$samps[coef_samp_indexes[fit_result$global_samp_indexes$floor.size, ]
-## i.e. coefsamps2 <- samps$samps[coef_samp_indexes[fit_result$coef_samp_indexes$year, ]
-## i.e. fixed_samps <- samps$samps[coef_samp_indexes[fit_result$fixed_samp_indexes$location, ]
+global_samps1 <- samps$samps[fit_result$boundary_samp_indexes$floor.size, , drop = F]
+coefsamps1 <- samps$samps[fit_result$random_samp_indexes$floor.size, ]
 
+global_samps2 <- samps$samps[fit_result$boundary_samp_indexes$year, , drop = F]
+coefsamps2 <- samps$samps[fit_result$random_samp_indexes$year, ]
 
-global_samps1 <- samps$samps[global_samp_indexes[[1]], , drop = F]
-coefsamps1 <- samps$samps[coef_samp_indexes[[1]], ]
-
-global_samps2 <- samps$samps[global_samp_indexes[[2]], , drop = F]
-coefsamps2 <- samps$samps[coef_samp_indexes[[2]], ]
-
-fixed_samps <- samps$samps[fixed_samp_indexes, , drop = F]
-
+fixed_samps <- samps$samps[fit_result$fixed_samp_indexes$Intercept, , drop = F]
 
 ## For now, let's just stick back the intercept back to each global_samps so we can still use the function compute_post_fun
 ## we should probably change the code of compute_post_fun to account that global_samps should not contain the intercept anymore..
-global_samps1 <- rbind(fixed_samps[1, , drop = F], global_samps1)
-global_samps2 <- rbind(fixed_samps[1, , drop = F], global_samps2)
+global_samps1 <- rbind(fixed_samps, global_samps1)
+global_samps2 <- rbind(fixed_samps, global_samps2)
 
 f1 <- compute_post_fun(
   samps = coefsamps1, global_samps = global_samps1,
