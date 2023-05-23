@@ -14,27 +14,27 @@ model_fit(
 )
 }
 \arguments{
-\item{formula}{A formula that may contains one response variable, one intercept, multiple random effects and fixed effects.}
+\item{formula}{A formula that contains one response variable, and covariates with either random or fixed effect.}
 
-\item{data}{A dataframe that contains the response variable and other covariants mentioned in the formula.}
+\item{data}{A dataframe that contains the response variable and other covariates mentioned in the formula.}
 
 \item{method}{The inference method used in the model. By default, the method is set to be "aghq".}
 
-\item{family}{The family of response used in the model.}
+\item{family}{The family of response used in the model. By default, the family is set to be "Gaussian".}
 
-\item{control.family}{Parameters used to specify the priors for the family parameters.}
+\item{control.family}{Parameters used to specify the priors for the family parameters, such as the standard deviation parameter of Gaussian family.}
 
 \item{control.fixed}{Parameters used to specify the priors for the fixed effects.}
 }
 \value{
 A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for
-the intercepts and fixed effects (design_mat_fixed), fitted aghq (mod) and indexes to help partition the posterior samples
+the fixed effects (design_mat_fixed), fitted aghq (mod) and indexes to partition the posterior samples
 (boundary_samp_indexes, random_samp_indexes and fixed_samp_indexes).
 }
 \description{
-Fitting a _____ model based on the provided formula, data and parameters such as type of method and family of response.
-Returning the S4 objects for the random effects, concatenated design matrix for the intercepts and fixed effects, fitted aghq,
-indexes to help partition the posterior samples.
+Fitting a hierarchical model based on the provided formula, data and parameters such as type of method and family of response.
+Returning the S4 objects for the random effects, concatenated design matrix for the intercepts and fixed effects, fitted model,
+indexes to partition the posterior samples.
 }
 \examples{
 library(OSplines)

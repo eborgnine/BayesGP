@@ -8,18 +8,18 @@ library(aghq)
 #' Model fitting with random effects/fixed effects
 #'
 #' @description
-#' Fitting a _____ model based on the provided formula, data and parameters such as type of method and family of response.
-#' Returning the S4 objects for the random effects, concatenated design matrix for the intercepts and fixed effects, fitted aghq,
-#' indexes to help partition the posterior samples.
+#' Fitting a hierarchical model based on the provided formula, data and parameters such as type of method and family of response.
+#' Returning the S4 objects for the random effects, concatenated design matrix for the intercepts and fixed effects, fitted model,
+#' indexes to partition the posterior samples.
 #'
-#' @param formula A formula that may contains one response variable, one intercept, multiple random effects and fixed effects.
-#' @param data A dataframe that contains the response variable and other covariants mentioned in the formula.
+#' @param formula A formula that contains one response variable, and covariates with either random or fixed effect.
+#' @param data A dataframe that contains the response variable and other covariates mentioned in the formula.
 #' @param method The inference method used in the model. By default, the method is set to be "aghq".
 #' @param family The family of response used in the model. By default, the family is set to be "Gaussian".
-#' @param control.family Parameters used to specify the priors for the family parameters.
+#' @param control.family Parameters used to specify the priors for the family parameters, such as the standard deviation parameter of Gaussian family.
 #' @param control.fixed Parameters used to specify the priors for the fixed effects.
 #' @return A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for
-#' the intercepts and fixed effects (design_mat_fixed), fitted aghq (mod) and indexes to help partition the posterior samples
+#' the fixed effects (design_mat_fixed), fitted aghq (mod) and indexes to partition the posterior samples
 #' (boundary_samp_indexes, random_samp_indexes and fixed_samp_indexes).
 #' @examples
 #' library(OSplines)
@@ -356,7 +356,7 @@ get_result_by_method <- function(instances, design_mat_fixed, control.family, co
 #' the reference starting location. These k knots will define (k-1) basis function in total.
 #' @param refined_x A vector of locations to evaluate the O-spline basis
 #' @param p An integer value indicates the order of smoothness
-#' @return A matrix with i,j componet being the value of jth basis function
+#' @return A matrix with i,j component being the value of jth basis function
 #' value at ith element of refined_x, the ncol should equal to number of knots minus 1, and nrow
 #' should equal to the number of elements in refined_x.
 #' @examples

@@ -15,7 +15,7 @@ the reference starting location. These k knots will define (k-1) basis function 
 \item{p}{An integer value indicates the order of smoothness}
 }
 \value{
-A matrix with i,j componet being the value of jth basis function
+A matrix with i,j component being the value of jth basis function
 value at ith element of refined_x, the ncol should equal to number of knots minus 1, and nrow
 should equal to the number of elements in refined_x.
 }
