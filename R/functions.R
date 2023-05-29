@@ -74,6 +74,9 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     order <- eval(rand_effect$order)
     knots <- eval(rand_effect$knots)
     k <- eval(rand_effect$k)
+    if (!(is.null(k)) && k < 3) {
+      stop("Error: Parameter <k> in the random effect part should be >= 3.")
+    }
     sd.prior <- eval(rand_effect$sd.prior)
     boundary.prior <- eval(rand_effect$boundary.prior)
     # If the user does not specify knots, compute knots with
