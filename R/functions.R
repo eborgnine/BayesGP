@@ -96,6 +96,10 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       sd.prior <- list(prior = "exp", para = list(u = 1, alpha = 0.5))
     }
 
+    if (sd.prior$prior != "exp") {
+      stop("Error: For each random effect, sd.prior currently only supports 'exp' (exponential) as prior.")
+    }
+
     if (is.null(boundary.prior)) {
       boundary.prior <- list(prec = 0.01)
     }
@@ -128,6 +132,10 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
 
   if (missing(control.family)) {
     control.family <- list(sd_prior = list(prior = "exp", para = list(u = 1, alpha = 0.5)))
+  }
+
+  if (control.family$sd_prior$prior != "exp") {
+    stop("Error: Currently, control.family only supports 'exp' (exponential) as prior.")
   }
 
   if (missing(control.fixed)) {
