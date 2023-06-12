@@ -61,15 +61,15 @@ Given the set of knots, we can easily construct the basis function $\varphi_i$ a
 fit_result <- model_fit(
   rent ~ location + f(
     smoothing_var = floor.size,
-    model = "IWP",
-    order = polyOrder1
+    model = "IWP", k = 10,
+    order = polyOrder1, initial_location = NULL,
   )
   + score + f(
       smoothing_var = year,
       model = "IWP",
       order = polyOrder2, k = 10, # should add a checker for k >= 3
       sd.prior = list(prior = "exp", para = list(u = 1, alpha = 0.5)),
-      boundary.prior = list(prec = 0.01)
+      boundary.prior = list(prec = 0.01), initial_location = 1990
     ),
   data = data, method = "aghq", family = "Gaussian",
   control.family = list(sd_prior = list(prior = "exp", para = list(u = 1, alpha = 0.5))),
@@ -98,22 +98,17 @@ coefsamps2 <- samps$samps[fit_result$random_samp_indexes$year, ]
 
 fixed_samps <- samps$samps[fit_result$fixed_samp_indexes$Intercept, , drop = F]
 
-## For now, let's just stick back the intercept back to each global_samps so we can still use the function compute_post_fun
-## we should probably change the code of compute_post_fun to account that global_samps should not contain the intercept anymore..
-global_samps1 <- rbind(fixed_samps, global_samps1)
-global_samps2 <- rbind(fixed_samps, global_samps2)
-
 f1 <- compute_post_fun(
   samps = coefsamps1, global_samps = global_samps1,
   knots = IWP1@knots,
-  refined_x = IWP1@refined_x,
+  refined_x = seq(min(IWP1@observed_x), max(IWP1@observed_x), length.out = 100),
   p = polyOrder1, degree = 0
 )
 
 f2 <- compute_post_fun(
   samps = coefsamps2, global_samps = global_samps2,
   knots = IWP2@knots,
-  refined_x = IWP2@refined_x,
+  refined_x = seq(min(IWP2@observed_x), max(IWP2@observed_x), length.out = 100),
   p = polyOrder2, degree = 0
 )
 
@@ -121,11 +116,9 @@ f1pos <- extract_mean_interval_given_samps(f1)
 f2pos <- extract_mean_interval_given_samps(f2)
 
 
-plot(data[, c("floor.size", "rent")], col = "#0000FF40", cex = 0.6, xlab = "Rent vs Size")
-matlines((f1pos$x + min(data$floor.size)), f1pos[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), col = "black")
+matplot((f1pos$x + IWP1@initial_location), f1pos[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), col = "black", type = 'l', ylab = "effect on rent", xlab = "floor.size")
 
-plot(data[, c("year", "rent")], col = "#0000FF40", cex = 0.6, xlab = "Rent vs Year")
-matlines((f2pos$x + min(data$year)), f2pos[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), col = "black")
+matplot((f2pos$x + IWP2@initial_location), f2pos[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), col = "black", type = 'l', ylab = "effect on rent", xlab = "year")
 
 fixed_samps %>% apply(1, mean)
 fixed_samps %>% apply(1, sd)

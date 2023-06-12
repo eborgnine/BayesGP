@@ -95,13 +95,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       initialized_smoothing_var <- data[[smoothing_var]] - initial_location
       default_k <- 5
       if (is.null(k)) {
-        knots <- sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = default_k)) # should be length.out
+        knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = default_k))) # should be length.out
       } else {
-        knots <- sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = k))
+        knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = k)))
       }
     }
     # refined_x <- seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = 1) # this is not correct
-    refined_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
+    observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
     if (is.null(sd.prior)) {
       sd.prior <- list(prior = "exp", para = list(u = 1, alpha = 0.5))
     }
@@ -117,7 +117,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     instance <- new(model_class,
       response_var = response_var,
       smoothing_var = smoothing_var, order = order,
-      knots = knots, refined_x = refined_x, sd.prior = sd.prior, boundary.prior = boundary.prior, data = data
+      knots = knots, observed_x = observed_x, sd.prior = sd.prior, boundary.prior = boundary.prior, data = data
     )
 
     # Case for IWP
@@ -223,7 +223,7 @@ parse_formula <- function(formula) {
 # Create a class for IWP using S4
 setClass("IWP", slots = list(
   response_var = "name", smoothing_var = "name", order = "numeric",
-  knots = "numeric", refined_x = "numeric", sd.prior = "list",
+  knots = "numeric", observed_x = "numeric", sd.prior = "list",
   boundary.prior = "list", data = "data.frame", X = "matrix",
   B = "matrix", P = "matrix", initial_location = "numeric"
 ))
@@ -239,7 +239,7 @@ setMethod("local_poly", signature = "IWP", function(object) {
   refined_x <- (object@data)[[smoothing_var]] - initial_location
   p <- object@order
   # TODO: refactor this part
-  if (min(refined_x) >= 0){ 
+  if (min(knots) >= 0){ 
     # The following part only works with all-positive knots
     dif <- diff(knots)
     nn <- length(refined_x)
@@ -258,12 +258,35 @@ setMethod("local_poly", signature = "IWP", function(object) {
       }
     }
   }
+  else if(max(knots) <= 0){
+    # Handle the negative part only
+    refined_x_neg <- refined_x
+    refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
+    knots_neg <- knots
+    knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
+    dif <- diff(knots_neg)
+    nn <- length(refined_x_neg)
+    n <- length(knots_neg)
+    D <- matrix(0, nrow = nn, ncol = n - 1)
+    for (j in 1:nn) {
+      for (i in 1:(n - 1)) {
+        if (refined_x_neg[j] <= knots_neg[i]) {
+          D[j, i] <- 0
+        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
+          D[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
+        } else {
+          k <- 1:p
+          D[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+        }
+      }
+    }
+  }
   else{
     # Handle the negative part
     refined_x_neg <- refined_x
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
     knots_neg <- knots
-    knots_neg <- unique(sort(ifelse(knots < 0, -refined_x, 0)))
+    knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
     dif <- diff(knots_neg)
     nn <- length(refined_x_neg)
     n <- length(knots_neg)
@@ -282,23 +305,23 @@ setMethod("local_poly", signature = "IWP", function(object) {
     }
     
     # Handle the positive part
-    refined_x_neg <- refined_x
-    refined_x_neg <- ifelse(refined_x > 0, refined_x, 0)
-    knots_neg <- knots
-    knots_neg <- unique(sort(ifelse(knots < 0, -refined_x, 0)))
-    dif <- diff(knots_neg)
-    nn <- length(refined_x_neg)
-    n <- length(knots_neg)
+    refined_x_pos <- refined_x
+    refined_x_pos <- ifelse(refined_x > 0, refined_x, 0)
+    knots_pos <- knots
+    knots_pos <- unique(sort(ifelse(knots > 0, knots, 0)))
+    dif <- diff(knots_pos)
+    nn <- length(refined_x_pos)
+    n <- length(knots_pos)
     D2 <- matrix(0, nrow = nn, ncol = n - 1)
     for (j in 1:nn) {
       for (i in 1:(n - 1)) {
-        if (refined_x_neg[j] <= knots_neg[i]) {
+        if (refined_x_pos[j] <= knots_pos[i]) {
           D2[j, i] <- 0
-        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
-          D2[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
+        } else if (refined_x_pos[j] <= knots_pos[i + 1] & refined_x_pos[j] >= knots_pos[i]) {
+          D2[j, i] <- (1 / factorial(p)) * (refined_x_pos[j] - knots_pos[i])^p
         } else {
           k <- 1:p
-          D2[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+          D2[j, i] <- sum((dif[i]^k) * ((refined_x_pos[j] - knots_pos[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
         }
       }
     }
@@ -334,10 +357,26 @@ setGeneric("compute_weights_precision", function(object) {
   standardGeneric("compute_weights_precision")
 })
 setMethod("compute_weights_precision", signature = "IWP", function(object) {
-  x <- object@knots
-  d <- diff(x)
-  Precweights <- diag(d)
-  Precweights
+  knots <- object@knots
+  if(min(knots) >= 0){
+    as(diag(diff(knots)), "matrix")
+  }
+  else if(max(knots) < 0){
+    knots_neg <- knots
+    knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
+    as(diag(diff(knots_neg)), "matrix")
+  }
+  else{
+    knots_neg <- knots
+    knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
+    knots_pos <- knots
+    knots_pos <- unique(sort(ifelse(knots > 0, knots, 0)))
+    d1 <- diff(knots_neg)
+    d2 <- diff(knots_pos)
+    Precweights1 <- diag(d1)
+    Precweights2 <- diag(d2)
+    as(Matrix::bdiag(Precweights1, Precweights2), "matrix")
+    }
 })
 
 
@@ -441,24 +480,98 @@ get_result_by_method <- function(instances, design_mat_fixed, control.family, co
 #' local_poly(knots = c(0, 0.2, 0.4, 0.6, 0.8), refined_x = seq(0, 0.8, by = 0.1), p = 2)
 #' @export
 local_poly_helper <- function(knots, refined_x, p = 2) {
-  dif <- diff(knots)
-  nn <- length(refined_x)
-  n <- length(knots)
-  D <- matrix(0, nrow = nn, ncol = n - 1)
-  for (j in 1:nn) {
-    for (i in 1:(n - 1)) {
-      if (refined_x[j] <= knots[i]) {
-        D[j, i] <- 0
-      } else if (refined_x[j] <= knots[i + 1] & refined_x[j] >= knots[i]) {
-        D[j, i] <- (1 / factorial(p)) * (refined_x[j] - knots[i])^p
-      } else {
-        k <- 1:p
-        D[j, i] <- sum((dif[i]^k) * ((refined_x[j] - knots[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+  # TODO: refactor this part
+  if (min(knots) >= 0){ 
+    # The following part only works with all-positive knots
+    dif <- diff(knots)
+    nn <- length(refined_x)
+    n <- length(knots)
+    D <- matrix(0, nrow = nn, ncol = n - 1)
+    for (j in 1:nn) {
+      for (i in 1:(n - 1)) {
+        if (refined_x[j] <= knots[i]) {
+          D[j, i] <- 0
+        } else if (refined_x[j] <= knots[i + 1] & refined_x[j] >= knots[i]) {
+          D[j, i] <- (1 / factorial(p)) * (refined_x[j] - knots[i])^p
+        } else {
+          k <- 1:p
+          D[j, i] <- sum((dif[i]^k) * ((refined_x[j] - knots[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+        }
       }
     }
   }
+  else if(max(knots) <= 0){
+    # Handle the negative part only
+    refined_x_neg <- refined_x
+    refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
+    knots_neg <- knots
+    knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
+    dif <- diff(knots_neg)
+    nn <- length(refined_x_neg)
+    n <- length(knots_neg)
+    D <- matrix(0, nrow = nn, ncol = n - 1)
+    for (j in 1:nn) {
+      for (i in 1:(n - 1)) {
+        if (refined_x_neg[j] <= knots_neg[i]) {
+          D[j, i] <- 0
+        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
+          D[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
+        } else {
+          k <- 1:p
+          D[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+        }
+      }
+    }
+  }
+  else{
+    # Handle the negative part
+    refined_x_neg <- refined_x
+    refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
+    knots_neg <- knots
+    knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
+    dif <- diff(knots_neg)
+    nn <- length(refined_x_neg)
+    n <- length(knots_neg)
+    D1 <- matrix(0, nrow = nn, ncol = n - 1)
+    for (j in 1:nn) {
+      for (i in 1:(n - 1)) {
+        if (refined_x_neg[j] <= knots_neg[i]) {
+          D1[j, i] <- 0
+        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
+          D1[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
+        } else {
+          k <- 1:p
+          D1[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+        }
+      }
+    }
+    
+    # Handle the positive part
+    refined_x_pos <- refined_x
+    refined_x_pos <- ifelse(refined_x > 0, refined_x, 0)
+    knots_pos <- knots
+    knots_pos <- unique(sort(ifelse(knots > 0, knots, 0)))
+    dif <- diff(knots_pos)
+    nn <- length(refined_x_pos)
+    n <- length(knots_pos)
+    D2 <- matrix(0, nrow = nn, ncol = n - 1)
+    for (j in 1:nn) {
+      for (i in 1:(n - 1)) {
+        if (refined_x_pos[j] <= knots_pos[i]) {
+          D2[j, i] <- 0
+        } else if (refined_x_pos[j] <= knots_pos[i + 1] & refined_x_pos[j] >= knots_pos[i]) {
+          D2[j, i] <- (1 / factorial(p)) * (refined_x_pos[j] - knots_pos[i])^p
+        } else {
+          k <- 1:p
+          D2[j, i] <- sum((dif[i]^k) * ((refined_x_pos[j] - knots_pos[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+        }
+      }
+    }
+    D <- cbind(D1, D2)
+  }
   D
 }
+
 
 #' Constructing and evaluating the global polynomials, to account for boundary conditions (design matrix)
 #'
@@ -514,22 +627,28 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
     return(message("Error: The degree of derivative to compute is not defined. Should consider higher order smoothing model or lower order of the derivative degree."))
   }
   if (is.null(global_samps)) {
-    global_samps <- matrix(0, nrow = p, ncol = ncol(samps))
+    global_samps <- matrix(0, nrow = (p-1), ncol = ncol(samps))
   }
-  if (nrow(global_samps) != p | nrow(samps) != (length(knots) - 1)) {
-    return(message("Error: Incorrect dimension of global_samps or samps. Check whether the choice of p or the choice of knots are consistent with the fitted model."))
+  if (nrow(global_samps) != (p-1)) {
+    return(message("Error: Incorrect dimension of global_samps. Check whether the choice of p is consistent with the fitted model."))
   }
   if (ncol(samps) != ncol(global_samps)) {
     return(message("Error: The numbers of posterior samples do not match between the O-splines and global polynomials."))
   }
-  X <- global_poly_helper(refined_x, p = p)
-  X <- as.matrix(X[, 1:(p - degree)])
-  for (i in 1:ncol(X)) {
-    X[, i] <- (factorial(i + degree - 1) / factorial(i - 1)) * X[, i]
-  }
   ## Design matrix for the spline basis weights
   B <- dgTMatrix_wrapper(local_poly_helper(knots, refined_x = refined_x, p = (p - degree)))
-  fitted_samps_deriv <- X %*% global_samps[(1 + degree):p, ] + B %*% samps
+  
+  if ((p - degree) > 1){
+    X <- global_poly_helper(refined_x, p = p)
+    X <- as.matrix(X[, 1:(p - degree)])
+    for (i in 1:ncol(X)) {
+      X[, i] <- (factorial(i + degree - 1) / factorial(i - 1)) * X[, i]
+    }
+    fitted_samps_deriv <- X[,-1] %*% global_samps[(1 + degree):(p-1), ,drop = FALSE] + B %*% samps
+  }
+  else {
+    fitted_samps_deriv <- B %*% samps
+  }
   result <- cbind(x = refined_x, data.frame(as.matrix(fitted_samps_deriv)))
   result
 }
