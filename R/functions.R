@@ -74,6 +74,8 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     order <- eval(rand_effect$order)
     knots <- eval(rand_effect$knots)
     k <- eval(rand_effect$k)
+    initial_location <- eval(rand_effect$initial_location)
+    
     if (!(is.null(k)) && k < 3) {
       stop("Error: Parameter <k> in the random effect part should be >= 3.")
     }
@@ -82,10 +84,15 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     }
     sd.prior <- eval(rand_effect$sd.prior)
     boundary.prior <- eval(rand_effect$boundary.prior)
+    # If the user does not specify initial_location, compute initial_location with
+    # the min of data[[smoothing_var]]
+    if (is.null(initial_location)){
+      initial_location = min(data[[smoothing_var]])
+    }
     # If the user does not specify knots, compute knots with
     # the parameter k
     if (is.null(knots)) {
-      initialized_smoothing_var <- data[[smoothing_var]] - min(data[[smoothing_var]])
+      initialized_smoothing_var <- data[[smoothing_var]] - initial_location
       default_k <- 5
       if (is.null(k)) {
         knots <- sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = default_k)) # should be length.out
@@ -114,6 +121,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     )
 
     # Case for IWP
+    instance@initial_location <- initial_location
     instance@X <- global_poly(instance)[, -1, drop = FALSE]
     instance@B <- local_poly(instance)
     instance@P <- compute_weights_precision(instance)
@@ -217,7 +225,7 @@ setClass("IWP", slots = list(
   response_var = "name", smoothing_var = "name", order = "numeric",
   knots = "numeric", refined_x = "numeric", sd.prior = "list",
   boundary.prior = "list", data = "data.frame", X = "matrix",
-  B = "matrix", P = "matrix"
+  B = "matrix", P = "matrix", initial_location = "numeric"
 ))
 
 
@@ -226,24 +234,75 @@ setGeneric("local_poly", function(object) {
 })
 setMethod("local_poly", signature = "IWP", function(object) {
   knots <- object@knots
+  initial_location <- object@initial_location
   smoothing_var <- object@smoothing_var
-  refined_x <- (object@data)[[smoothing_var]] - min((object@data)[[smoothing_var]])
+  refined_x <- (object@data)[[smoothing_var]] - initial_location
   p <- object@order
-  dif <- diff(knots)
-  nn <- length(refined_x)
-  n <- length(knots)
-  D <- matrix(0, nrow = nn, ncol = n - 1)
-  for (j in 1:nn) {
-    for (i in 1:(n - 1)) {
-      if (refined_x[j] <= knots[i]) {
-        D[j, i] <- 0
-      } else if (refined_x[j] <= knots[i + 1] & refined_x[j] >= knots[i]) {
-        D[j, i] <- (1 / factorial(p)) * (refined_x[j] - knots[i])^p
-      } else {
-        k <- 1:p
-        D[j, i] <- sum((dif[i]^k) * ((refined_x[j] - knots[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+  # TODO: refactor this part
+  if (min(refined_x) >= 0){ 
+    # The following part only works with all-positive knots
+    dif <- diff(knots)
+    nn <- length(refined_x)
+    n <- length(knots)
+    D <- matrix(0, nrow = nn, ncol = n - 1)
+    for (j in 1:nn) {
+      for (i in 1:(n - 1)) {
+        if (refined_x[j] <= knots[i]) {
+          D[j, i] <- 0
+        } else if (refined_x[j] <= knots[i + 1] & refined_x[j] >= knots[i]) {
+          D[j, i] <- (1 / factorial(p)) * (refined_x[j] - knots[i])^p
+        } else {
+          k <- 1:p
+          D[j, i] <- sum((dif[i]^k) * ((refined_x[j] - knots[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+        }
       }
     }
+  }
+  else{
+    # Handle the negative part
+    refined_x_neg <- refined_x
+    refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
+    knots_neg <- knots
+    knots_neg <- unique(sort(ifelse(knots < 0, -refined_x, 0)))
+    dif <- diff(knots_neg)
+    nn <- length(refined_x_neg)
+    n <- length(knots_neg)
+    D1 <- matrix(0, nrow = nn, ncol = n - 1)
+    for (j in 1:nn) {
+      for (i in 1:(n - 1)) {
+        if (refined_x_neg[j] <= knots_neg[i]) {
+          D1[j, i] <- 0
+        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
+          D1[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
+        } else {
+          k <- 1:p
+          D1[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+        }
+      }
+    }
+    
+    # Handle the positive part
+    refined_x_neg <- refined_x
+    refined_x_neg <- ifelse(refined_x > 0, refined_x, 0)
+    knots_neg <- knots
+    knots_neg <- unique(sort(ifelse(knots < 0, -refined_x, 0)))
+    dif <- diff(knots_neg)
+    nn <- length(refined_x_neg)
+    n <- length(knots_neg)
+    D2 <- matrix(0, nrow = nn, ncol = n - 1)
+    for (j in 1:nn) {
+      for (i in 1:(n - 1)) {
+        if (refined_x_neg[j] <= knots_neg[i]) {
+          D2[j, i] <- 0
+        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
+          D2[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
+        } else {
+          k <- 1:p
+          D2[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+        }
+      }
+    }
+    D <- cbind(D1, D2)
   }
   D
 })
@@ -254,7 +313,7 @@ setGeneric("global_poly", function(object) {
 })
 setMethod("global_poly", signature = "IWP", function(object) {
   smoothing_var <- object@smoothing_var
-  x <- (object@data)[[smoothing_var]] - min((object@data)[[smoothing_var]])
+  x <- (object@data)[[smoothing_var]] - object@initial_location
   p <- object@order
   result <- NULL
   for (i in 1:p) {
