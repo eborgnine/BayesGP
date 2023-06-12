@@ -77,6 +77,9 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     if (!(is.null(k)) && k < 3) {
       stop("Error: Parameter <k> in the random effect part should be >= 3.")
     }
+    if(order < 1){
+      stop("Error: Parameter <order> in the random effect part should be >= 1.")
+    }
     sd.prior <- eval(rand_effect$sd.prior)
     boundary.prior <- eval(rand_effect$boundary.prior)
     # If the user does not specify knots, compute knots with
@@ -166,7 +169,12 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   for (instance in instances) {
     cur_end <- cur_end + ncol(instance@X)
     cur_coef_end <- cur_coef_end + ncol(instance@B)
-    global_samp_indexes[[length(global_samp_indexes) + 1]] <- (cur_start:cur_end)
+    if(instance@order == 1){
+      global_samp_indexes[[length(global_samp_indexes) + 1]] <- numeric()
+    }
+    else if(instance@order > 1){
+      global_samp_indexes[[length(global_samp_indexes) + 1]] <- (cur_start:cur_end)
+    }
     coef_samp_indexes[[length(coef_samp_indexes) + 1]] <- (cur_coef_start:cur_coef_end)
     cur_start <- cur_end + 1
     cur_coef_start <- cur_coef_end + 1
