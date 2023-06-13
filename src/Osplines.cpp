@@ -47,6 +47,8 @@ Type objective_function<Type>::operator() ()
 
   DATA_VECTOR(y); //response variable
   
+  DATA_SCALAR(family_type); // Family types: Gaussian - 0, Poisson - 1, Binomial - 2
+
   vector<int> betadim(X.size());
   int sum_betadim = 0;
   for (int i = 0; i < X.size(); i++){
@@ -147,7 +149,17 @@ Type objective_function<Type>::operator() ()
 
   // Log likelihood
   Type ll = 0;
-  ll = sum(dnorm(y, eta, sigma(theta.size() - 1), TRUE)); 
+  // Family types: Gaussian - 0, Poisson - 1, Binomial - 2
+  if (family_type == 0){
+    ll = sum(dnorm(y, eta, sigma(theta.size() - 1), TRUE));
+  } 
+  else if (family_type == 1){
+    ll = sum(dpois(y, exp(eta), TRUE));
+  } 
+  // else if (family_type == 2){
+  //   Initialize a vector of 1s with the size of length(y)
+  //   ll = sum(dbinom_robust(y, size, eta, TRUE));
+  // } 
   REPORT(ll);
   
 

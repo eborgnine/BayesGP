@@ -156,7 +156,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     }
   }
 
-  result_by_method <- get_result_by_method(instances, design_mat_fixed, control.family, control.fixed, fixed_effects)
+  result_by_method <- get_result_by_method(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects)
   mod <- result_by_method$mod
   w_count <- result_by_method$w_count
 
@@ -380,7 +380,7 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-get_result_by_method <- function(instances, design_mat_fixed, control.family, control.fixed, fixed_effects, aghq_k = 4) {
+get_result_by_method <- function(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k = 4) {
   # Containers for random effects
   X <- list()
   B <- list()
@@ -396,8 +396,8 @@ get_result_by_method <- function(instances, design_mat_fixed, control.family, co
 
   w_count <- 0
   # Need a theta for the Gaussian variance, so
-  # theta_count starts at 1
-  theta_count <- 1
+  # theta_count starts at 1 if Gaussian
+  theta_count <- 0 + (family == "Gaussian")
 
   for (instance in instances) {
     # For each random effects
@@ -414,9 +414,10 @@ get_result_by_method <- function(instances, design_mat_fixed, control.family, co
 
   # For the variance of the Gaussian family
   # From control.family, if applicable
-  u[[length(u) + 1]] <- control.family$sd_prior$para$u
-  alpha[[length(alpha) + 1]] <- control.family$sd_prior$para$alpha
-
+  if (family == "Gaussian"){
+    u[[length(u) + 1]] <- control.family$sd_prior$para$u
+    alpha[[length(alpha) + 1]] <- control.family$sd_prior$para$alpha
+  }
   for (i in 1:length(design_mat_fixed)) {
     # For each fixed effects
     if (i == 1) {
@@ -426,6 +427,17 @@ get_result_by_method <- function(instances, design_mat_fixed, control.family, co
     }
     Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
     w_count <- w_count + ncol(design_mat_fixed[[i]])
+  }
+
+  # Family types: Gaussian - 0, Poisson - 1, Binomial - 2
+  if (family == "Gaussian"){
+    family_type = 0
+  }
+  else if (family == "Poisson"){
+    family_type = 1
+  }
+  else if (family == "Binomial"){
+    family_type = 2
   }
 
   tmbdat <- list(
@@ -443,7 +455,10 @@ get_result_by_method <- function(instances, design_mat_fixed, control.family, co
     Xf = Xf,
 
     # Response
-    y = (instances[[1]]@data)[[instances[[1]]@response_var]]
+    y = (instances[[1]]@data)[[instances[[1]]@response_var]],
+
+    # Family type
+    family_type = family_type
   )
 
   tmbparams <- list(
@@ -569,7 +584,7 @@ local_poly_helper <- function(knots, refined_x, p = 2) {
     }
     D <- cbind(D1, D2)
   }
-  D
+  D # Local poly design matrix
 }
 
 

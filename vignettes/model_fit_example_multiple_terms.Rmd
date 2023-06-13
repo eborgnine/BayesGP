@@ -50,6 +50,7 @@ We will illustrate the use of O-spline using the Munich rent data from INLA's Rp
 ### A model with two IWP and two Fixed effects:
 data <- INLA::Munich %>% select(rent, floor.size, year, location)
 data$score <- rnorm(n = nrow(data))
+data$response = rpois(n = nrow(data), lambda = exp(sin(data$year) + 1))
 head(data, n = 5)
 polyOrder1 <- 2 ## Assume f(floor.size) is second order IWP
 polyOrder2 <- 3 ## Assume f(year) is third order IWP
@@ -59,7 +60,7 @@ Given the set of knots, we can easily construct the basis function $\varphi_i$ a
 
 ```{r}
 fit_result <- model_fit(
-  rent ~ location + f(
+  response ~ location + f(
     smoothing_var = floor.size,
     model = "IWP", k = 10,
     order = polyOrder1, initial_location = NULL,
@@ -67,11 +68,11 @@ fit_result <- model_fit(
   + score + f(
       smoothing_var = year,
       model = "IWP",
-      order = polyOrder2, k = 10, # should add a checker for k >= 3
+      order = polyOrder2, k = 30, # should add a checker for k >= 3
       sd.prior = list(prior = "exp", para = list(u = 1, alpha = 0.5)),
-      boundary.prior = list(prec = 0.01), initial_location = 1990
+      boundary.prior = list(prec = 0.01), initial_location = NULL
     ),
-  data = data, method = "aghq", family = "Gaussian",
+  data = data, method = "aghq", family = "Poisson",
   control.family = list(sd_prior = list(prior = "exp", para = list(u = 1, alpha = 0.5))),
   control.fixed = list(intercept = list(prec = 0.01), location = list(prec = 0.01), score = list(prec = 0.01))
 )
