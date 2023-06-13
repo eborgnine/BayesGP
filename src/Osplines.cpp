@@ -46,7 +46,6 @@ Type objective_function<Type>::operator() ()
   DATA_STRUCT(Xf, list_SparseMatrix_from_R);
 
   DATA_VECTOR(y); //response variable
-  
   DATA_SCALAR(family_type); // Family types: Gaussian - 0, Poisson - 1, Binomial - 2
 
   vector<int> betadim(X.size());
@@ -156,10 +155,10 @@ Type objective_function<Type>::operator() ()
   else if (family_type == 1){
     ll = sum(dpois(y, exp(eta), TRUE));
   } 
-  // else if (family_type == 2){
-  //   Initialize a vector of 1s with the size of length(y)
-  //   ll = sum(dbinom_robust(y, size, eta, TRUE));
-  // } 
+  else if (family_type == 2){
+    DATA_VECTOR(size); // Size vector for binomial data
+    ll = sum(dbinom_robust(y, size, eta, TRUE));
+  } 
   REPORT(ll);
   
 

@@ -380,7 +380,18 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-get_result_by_method <- function(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k = 4) {
+get_result_by_method <- function(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k = 4, size = NULL) {
+  # Family types: Gaussian - 0, Poisson - 1, Binomial - 2
+  if (family == "Gaussian"){
+    family_type = 0
+  }
+  else if (family == "Poisson"){
+    family_type = 1
+  }
+  else if (family == "Binomial"){
+    family_type = 2
+  }
+  
   # Containers for random effects
   X <- list()
   B <- list()
@@ -397,7 +408,7 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
   w_count <- 0
   # Need a theta for the Gaussian variance, so
   # theta_count starts at 1 if Gaussian
-  theta_count <- 0 + (family == "Gaussian")
+  theta_count <- 0 + (family_type == 0)
 
   for (instance in instances) {
     # For each random effects
@@ -414,7 +425,7 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
 
   # For the variance of the Gaussian family
   # From control.family, if applicable
-  if (family == "Gaussian"){
+  if (family_type == 0){
     u[[length(u) + 1]] <- control.family$sd_prior$para$u
     alpha[[length(alpha) + 1]] <- control.family$sd_prior$para$alpha
   }
@@ -427,17 +438,6 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     }
     Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
     w_count <- w_count + ncol(design_mat_fixed[[i]])
-  }
-
-  # Family types: Gaussian - 0, Poisson - 1, Binomial - 2
-  if (family == "Gaussian"){
-    family_type = 0
-  }
-  else if (family == "Poisson"){
-    family_type = 1
-  }
-  else if (family == "Binomial"){
-    family_type = 2
   }
 
   tmbdat <- list(
@@ -460,6 +460,11 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     # Family type
     family_type = family_type
   )
+  
+  # If Family == "Binomial", check whether size is defined in user's input
+  if(family_type == 2 & is.null(size)){
+    tmbdat$size <- numeric(length = length(tmbdat$y)) + 1 # A vector of 1s being default
+  }
 
   tmbparams <- list(
     W = c(rep(0, w_count)), # recall W is everything in the model (RE or FE)

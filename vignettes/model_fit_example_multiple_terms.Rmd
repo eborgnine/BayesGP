@@ -50,7 +50,10 @@ We will illustrate the use of O-spline using the Munich rent data from INLA's Rp
 ### A model with two IWP and two Fixed effects:
 data <- INLA::Munich %>% select(rent, floor.size, year, location)
 data$score <- rnorm(n = nrow(data))
-data$response = rpois(n = nrow(data), lambda = exp(sin(data$year) + 1))
+data$year <- seq(1900, 2010, length.out = nrow(data))
+func <- function(x) {sin(0.5*x)}
+inv_logit_func <- function(x) {exp(x)/(1 + exp(x))}
+data$response = rbinom(n = nrow(data), size = 1, prob = inv_logit_func(func(data$year)))
 head(data, n = 5)
 polyOrder1 <- 2 ## Assume f(floor.size) is second order IWP
 polyOrder2 <- 3 ## Assume f(year) is third order IWP
@@ -72,7 +75,7 @@ fit_result <- model_fit(
       sd.prior = list(prior = "exp", para = list(u = 1, alpha = 0.5)),
       boundary.prior = list(prec = 0.01), initial_location = NULL
     ),
-  data = data, method = "aghq", family = "Poisson",
+  data = data, method = "aghq", family = "Binomial",
   control.family = list(sd_prior = list(prior = "exp", para = list(u = 1, alpha = 0.5))),
   control.fixed = list(intercept = list(prec = 0.01), location = list(prec = 0.01), score = list(prec = 0.01))
 )
@@ -120,6 +123,7 @@ f2pos <- extract_mean_interval_given_samps(f2)
 matplot((f1pos$x + IWP1@initial_location), f1pos[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), col = "black", type = 'l', ylab = "effect on rent", xlab = "floor.size")
 
 matplot((f2pos$x + IWP2@initial_location), f2pos[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), col = "black", type = 'l', ylab = "effect on rent", xlab = "year")
+lines(I(func(f2pos$x + IWP2@initial_location) - func(f2pos$x + IWP2@initial_location)[1]) ~ I(f2pos$x + IWP2@initial_location), col = "red")
 
 fixed_samps %>% apply(1, mean)
 fixed_samps %>% apply(1, sd)
