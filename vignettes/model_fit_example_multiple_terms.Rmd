@@ -128,3 +128,17 @@ lines(I(func(f2pos$x + IWP2@initial_location) - func(f2pos$x + IWP2@initial_loca
 fixed_samps %>% apply(1, mean)
 fixed_samps %>% apply(1, sd)
 ```
+```{r}
+### Fixed effect summary
+fixed_samps <- samps$samps[unlist(fit_result$fixed_samp_indexes), , drop = F]
+fixed_summary <- fixed_samps %>% apply(MARGIN = 1, summary)
+colnames(fixed_summary) <- names(fit_result$fixed_samp_indexes)
+fixed_sd <- fixed_samps %>% apply(MARGIN = 1, sd)
+fixed_summary <- rbind(fixed_summary, fixed_sd)
+rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
+t(fixed_summary[c(2:5,7),])
+```
+
+
+
+
