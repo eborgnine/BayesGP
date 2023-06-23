@@ -228,6 +228,34 @@ setClass("IWP", slots = list(
   B = "matrix", P = "matrix", initial_location = "numeric"
 ))
 
+# Create a class for IID using S4
+setClass("IID", slots = list(
+  response_var = "name", smoothing_var = "name", sd.prior = "list",
+  data = "data.frame", B = "matrix", P = "matrix"
+))
+
+setGeneric("compute_B", function(object) {
+  standardGeneric("compute_B")
+})
+setGeneric("compute_P", function(object) {
+  standardGeneric("compute_P")
+})
+
+setMethod("compute_B", signature = "IID", function(object) {
+  smoothing_var <- object@smoothing_var
+  x <- as.factor((object@data)[[smoothing_var]])
+  B <- model.matrix(~-1+x)
+  B
+})
+setMethod("compute_P", signature = "IID", function(object) {
+  smoothing_var <- object@smoothing_var
+  x <- (object@data)[[smoothing_var]]
+  num_factor <- length(unique(x))
+  diag(nrow = num_factor, ncol = num_factor)
+})
+
+
+
 
 setGeneric("local_poly", function(object) {
   standardGeneric("local_poly")
