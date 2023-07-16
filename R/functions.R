@@ -71,61 +71,69 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   for (rand_effect in rand_effects) {
     smoothing_var <- rand_effect$smoothing_var
     model_class <- rand_effect$model
-    order <- eval(rand_effect$order)
-    knots <- eval(rand_effect$knots)
-    k <- eval(rand_effect$k)
-    initial_location <- eval(rand_effect$initial_location)
-    
-    if (!(is.null(k)) && k < 3) {
-      stop("Error: Parameter <k> in the random effect part should be >= 3.")
-    }
-    if(order < 1){
-      stop("Error: Parameter <order> in the random effect part should be >= 1.")
-    }
     sd.prior <- eval(rand_effect$sd.prior)
-    boundary.prior <- eval(rand_effect$boundary.prior)
-    # If the user does not specify initial_location, compute initial_location with
-    # the min of data[[smoothing_var]]
-    if (is.null(initial_location)){
-      initial_location = min(data[[smoothing_var]])
-    }
-    # If the user does not specify knots, compute knots with
-    # the parameter k
-    if (is.null(knots)) {
-      initialized_smoothing_var <- data[[smoothing_var]] - initial_location
-      default_k <- 5
-      if (is.null(k)) {
-        knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = default_k))) # should be length.out
-      } else {
-        knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = k)))
-      }
-    }
-    # refined_x <- seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = 1) # this is not correct
-    observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
     if (is.null(sd.prior)) {
       sd.prior <- list(prior = "exp", para = list(u = 1, alpha = 0.5))
     }
-
     if (sd.prior$prior != "exp") {
       stop("Error: For each random effect, sd.prior currently only supports 'exp' (exponential) as prior.")
     }
-
-    if (is.null(boundary.prior)) {
-      boundary.prior <- list(prec = 0.01)
+    cat(model_class)
+    if(model_class == "IWP"){
+      order <- eval(rand_effect$order)
+      knots <- eval(rand_effect$knots)
+      k <- eval(rand_effect$k)
+      initial_location <- eval(rand_effect$initial_location)
+      if (!(is.null(k)) && k < 3) {
+        stop("Error: Parameter <k> in the random effect part should be >= 3.")
+      }
+      if(order < 1){
+        stop("Error: Parameter <order> in the random effect part should be >= 1.")
+      }
+      boundary.prior <- eval(rand_effect$boundary.prior)
+      # If the user does not specify initial_location, compute initial_location with
+      # the min of data[[smoothing_var]]
+      if (is.null(initial_location)){
+        initial_location = min(data[[smoothing_var]])
+      }
+      # If the user does not specify knots, compute knots with
+      # the parameter k
+      if (is.null(knots)) {
+        initialized_smoothing_var <- data[[smoothing_var]] - initial_location
+        default_k <- 5
+        if (is.null(k)) {
+          knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = default_k))) # should be length.out
+        } else {
+          knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = k)))
+        }
+      }
+      # refined_x <- seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = 1) # this is not correct
+      observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
+      if (is.null(boundary.prior)) {
+        boundary.prior <- list(prec = 0.01)
+      }
+      instance <- new(model_class,
+                      response_var = response_var,
+                      smoothing_var = smoothing_var, order = order,
+                      knots = knots, observed_x = observed_x, sd.prior = sd.prior, boundary.prior = boundary.prior, data = data
+      )
+      # Case for IWP
+      instance@initial_location <- initial_location
+      instance@X <- global_poly(instance)[, -1, drop = FALSE]
+      instance@B <- local_poly(instance)
+      instance@P <- compute_weights_precision(instance)
+      instances[[length(instances) + 1]] <- instance
     }
-
-    instance <- new(model_class,
-      response_var = response_var,
-      smoothing_var = smoothing_var, order = order,
-      knots = knots, observed_x = observed_x, sd.prior = sd.prior, boundary.prior = boundary.prior, data = data
-    )
-
-    # Case for IWP
-    instance@initial_location <- initial_location
-    instance@X <- global_poly(instance)[, -1, drop = FALSE]
-    instance@B <- local_poly(instance)
-    instance@P <- compute_weights_precision(instance)
-    instances[[length(instances) + 1]] <- instance
+    else if(model_class == "IID"){
+      instance <- new(model_class,
+                      response_var = response_var,
+                      smoothing_var = smoothing_var, sd.prior = sd.prior, data = data
+      )
+      # Case for IID
+      instance@B <- compute_B(instance)
+      instance@P <- compute_P(instance)
+      instances[[length(instances) + 1]] <- instance
+    }
   }
 
   # For the intercept
@@ -164,10 +172,14 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   coef_samp_indexes <- list()
   fixed_samp_indexes <- list()
   rand_effects_names <- c()
+  global_effects_names <- c()
   sum_col_ins <- 0
   for (instance in instances) {
     sum_col_ins <- sum_col_ins + ncol(instance@B)
     rand_effects_names <- c(rand_effects_names, instance@smoothing_var)
+    if(class(instance) == "IWP"){
+      global_effects_names <- c(global_effects_names, instance@smoothing_var)
+    }
   }
 
   cur_start <- sum_col_ins + 1
@@ -175,19 +187,21 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   cur_coef_start <- 1
   cur_coef_end <- 0
   for (instance in instances) {
-    cur_end <- cur_end + ncol(instance@X)
+    if(class(instance) == "IWP"){
+      cur_end <- cur_end + ncol(instance@X)
+      if(instance@order == 1){
+        global_samp_indexes[[length(global_samp_indexes) + 1]] <- numeric()
+      }
+      else if(instance@order > 1){
+        global_samp_indexes[[length(global_samp_indexes) + 1]] <- (cur_start:cur_end)
+      }
+    }
     cur_coef_end <- cur_coef_end + ncol(instance@B)
-    if(instance@order == 1){
-      global_samp_indexes[[length(global_samp_indexes) + 1]] <- numeric()
-    }
-    else if(instance@order > 1){
-      global_samp_indexes[[length(global_samp_indexes) + 1]] <- (cur_start:cur_end)
-    }
     coef_samp_indexes[[length(coef_samp_indexes) + 1]] <- (cur_coef_start:cur_coef_end)
     cur_start <- cur_end + 1
     cur_coef_start <- cur_coef_end + 1
   }
-  names(global_samp_indexes) <- rand_effects_names
+  names(global_samp_indexes) <- global_effects_names
   names(coef_samp_indexes) <- rand_effects_names
 
   for (fixed_samp_index in ((cur_end + 1):w_count)) {
@@ -237,15 +251,15 @@ setClass("IID", slots = list(
 setGeneric("compute_B", function(object) {
   standardGeneric("compute_B")
 })
-setGeneric("compute_P", function(object) {
-  standardGeneric("compute_P")
-})
-
 setMethod("compute_B", signature = "IID", function(object) {
   smoothing_var <- object@smoothing_var
   x <- as.factor((object@data)[[smoothing_var]])
   B <- model.matrix(~-1+x)
   B
+})
+
+setGeneric("compute_P", function(object) {
+  standardGeneric("compute_P")
 })
 setMethod("compute_P", signature = "IID", function(object) {
   smoothing_var <- object@smoothing_var
@@ -253,9 +267,6 @@ setMethod("compute_P", signature = "IID", function(object) {
   num_factor <- length(unique(x))
   diag(nrow = num_factor, ncol = num_factor)
 })
-
-
-
 
 setGeneric("local_poly", function(object) {
   standardGeneric("local_poly")
@@ -358,7 +369,6 @@ setMethod("local_poly", signature = "IWP", function(object) {
   D
 })
 
-
 setGeneric("global_poly", function(object) {
   standardGeneric("global_poly")
 })
@@ -440,14 +450,19 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
 
   for (instance in instances) {
     # For each random effects
-    X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
+    if(class(instance) == "IWP"){
+      X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
+      betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
+    }
     B[[length(B) + 1]] <- dgTMatrix_wrapper(instance@B)
     P[[length(P) + 1]] <- dgTMatrix_wrapper(instance@P)
     logPdet[[length(logPdet) + 1]] <- as.numeric(determinant(instance@P, logarithm = TRUE)$modulus)
     u[[length(u) + 1]] <- instance@sd.prior$para$u
     alpha[[length(alpha) + 1]] <- instance@sd.prior$para$alpha
-    betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
-    w_count <- w_count + ncol(instance@X) + ncol(instance@B)
+    if(class(instance) == "IWP"){
+      w_count <- w_count + ncol(instance@X)
+    }
+    w_count <- w_count + ncol(instance@B)
     theta_count <- theta_count + 1
   }
 
