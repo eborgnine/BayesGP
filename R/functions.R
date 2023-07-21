@@ -57,7 +57,7 @@ library(aghq)
 #' IWP2 <- fit_result$instances[[2]]
 #' mod <- fit_result$mod
 #' @export
-model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed) {
+model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4) {
   # parse the input formula
   parse_result <- parse_formula(formula)
   response_var <- parse_result$response
@@ -164,7 +164,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     }
   }
 
-  result_by_method <- get_result_by_method(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects)
+  result_by_method <- get_result_by_method(instances = instances, design_mat_fixed = design_mat_fixed, family = family, control.family = control.family, control.fixed = control.fixed, fixed_effects = fixed_effects, aghq_k = aghq_k)
   mod <- result_by_method$mod
   w_count <- result_by_method$w_count
 
@@ -418,7 +418,7 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-get_result_by_method <- function(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k = 4, size = NULL) {
+get_result_by_method <- function(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size = NULL) {
   # Family types: Gaussian - 0, Poisson - 1, Binomial - 2
   if (family == "Gaussian"){
     family_type = 0
@@ -453,15 +453,13 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     if(class(instance) == "IWP"){
       X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
       betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
+      w_count <- w_count + ncol(instance@X)
     }
     B[[length(B) + 1]] <- dgTMatrix_wrapper(instance@B)
     P[[length(P) + 1]] <- dgTMatrix_wrapper(instance@P)
     logPdet[[length(logPdet) + 1]] <- as.numeric(determinant(instance@P, logarithm = TRUE)$modulus)
     u[[length(u) + 1]] <- instance@sd.prior$para$u
     alpha[[length(alpha) + 1]] <- instance@sd.prior$para$alpha
-    if(class(instance) == "IWP"){
-      w_count <- w_count + ncol(instance@X)
-    }
     w_count <- w_count + ncol(instance@B)
     theta_count <- theta_count + 1
   }
