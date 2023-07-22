@@ -90,6 +90,18 @@ mod <- fit_result$mod
 slotNames(IWP1)
 names(mod)
 ```
+
+```{r}
+summary(fit_result)
+```
+
+```{r}
+predict(fit_result, variable = "floor.size")
+```
+```{r}
+plot(fit_result)
+```
+
 ### Let's take out some samples:
 ```{r}
 samps <- aghq::sample_marginal(mod, M = 3000)

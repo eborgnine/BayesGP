@@ -78,7 +78,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     if (sd.prior$prior != "exp") {
       stop("Error: For each random effect, sd.prior currently only supports 'exp' (exponential) as prior.")
     }
-    cat(model_class)
+
     if(model_class == "IWP"){
       order <- eval(rand_effect$order)
       knots <- eval(rand_effect$knots)
@@ -210,12 +210,16 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
 
   names(fixed_samp_indexes) <- fixed_effects_names
 
-  return(list(
+  fit_result <- list(
     instances = instances, design_mat_fixed = design_mat_fixed, mod = mod,
     boundary_samp_indexes = global_samp_indexes,
     random_samp_indexes = coef_samp_indexes,
     fixed_samp_indexes = fixed_samp_indexes
-  ))
+  )
+
+  class(fit_result) <- "FitResult"
+
+  return(fit_result)
 }
 
 parse_formula <- function(formula) {
@@ -247,6 +251,88 @@ setClass("IID", slots = list(
   response_var = "name", smoothing_var = "name", sd.prior = "list",
   data = "data.frame", B = "matrix", P = "matrix"
 ))
+
+#' @export
+summary.FitResult <- function(object) {
+  # aghq_summary <- summary(object$mod)
+  # fit_result_summary <- tail(aghq_summary, n = 1)
+  # new_line <- paste(" ", "Here are some moments and quantiles for the log precision:")
+  # fit_result_summary <- structure(c(fit_result_summary, new_line))
+  # fit_result_summary <- paste(fit_result_summary, "Here are some moments and quantiles for the log precision: \n")
+  # cat(aghq_summary)
+  # cat("Here are some moments and quantiles for the log precision: ")
+  # print(summary(object$mod))
+  # cat("Here are some moments and quantiles for the log precision: \n")
+
+  # TODO: Add and modify summary from AGHQ
+
+  samps <- aghq::sample_marginal(mod, M = 3000)
+  fixed_samps <- samps$samps[unlist(fit_result$fixed_samp_indexes), , drop = F]
+  fixed_summary <- fixed_samps %>% apply(MARGIN = 1, summary)
+  colnames(fixed_summary) <- names(fit_result$fixed_samp_indexes)
+  fixed_sd <- fixed_samps %>% apply(MARGIN = 1, sd)
+  fixed_summary <- rbind(fixed_summary, fixed_sd)
+  rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
+
+  cat("Here are some moments and quantiles for the fixed effects: \n")
+  print(t(fixed_summary[c(2:5,7),]))
+}
+
+#' @export
+predict.FitResult <- function(object, newdata = NULL, variable, degree = 0) {
+  samps <- aghq::sample_marginal(object$mod, M = 3000)
+  global_samps <- samps$samps[object$boundary_samp_indexes[[variable]], , drop = F]
+  coefsamps <- samps$samps[object$random_samp_indexes[[variable]], ]
+  for (instance in object$instances) {
+    if (instance@smoothing_var == variable && class(instance) == "IWP"){
+      IWP <- instance
+      break
+    }
+    # else if (instance@smoothing_var == variable && class(instance) == "IID"){
+    #   IID <- instance
+    # }
+  }
+  # IWP <- object$instances[[variable]]
+
+  ## Step 2: Initialization
+  if (is.null(newdata)) {
+    refined_x_final = IWP@observed_x
+  }
+  else{
+    refined_x_final <- sort(newdata[[variable]] - IWP@initial_location) # initialize according to `initial_location`
+  }
+
+  ## Step 3: apply `compute_post_fun` to samps
+  f <- compute_post_fun(
+    samps = coefsamps, global_samps = global_samps,
+    knots = IWP@knots,
+    refined_x = refined_x_final,
+    p = IWP@order, ## check this order or p?
+    degree = degree
+  )
+
+  ## Step 4: summarize the prediction
+  fpos <- extract_mean_interval_given_samps(f)
+  fpos$x <- refined_x_final + IWP@initial_location
+
+  return(fpos)
+}
+
+#' @export
+plot.FitResult <- function(object) {
+  ### Step 1: predict with newdata = NULL
+  for (instance in object$instances){ ## for each variable in model_fit
+    if (class(instance) == "IWP"){
+      predict_result <- predict(object, variable = as.character(instance@smoothing_var))
+      matplot(x = predict_result$x, y = predict_result[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), 
+              col = "black", type = 'l', 
+              ylab = "effect", xlab = as.character(instance@smoothing_var))
+    }
+  }
+
+  ### Step 2: then plot the original aghq object
+  # plot(object$mod)
+}
 
 setGeneric("compute_B", function(object) {
   standardGeneric("compute_B")
