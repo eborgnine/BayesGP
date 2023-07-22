@@ -661,6 +661,8 @@ global_poly_helper <- function(x, p = 2) {
 #' be extracted using `sample_marginal` function from `aghq` package.
 #' @param global_samps A matrix that consists of posterior samples for the global basis coefficients. If NULL,
 #' assume there will be no global polynomials and the boundary conditions are exactly zero.
+#' @param intercept_samps A matrix that consists of posterior samples for the intercept parameter. If NULL, assume
+#' the function evaluated at zero is zero.
 #' @param knots A vector of knots used to construct the O-spline basis, first knot should be viewed as "0",
 #' the reference starting location. These k knots will define (k-1) basis function in total.
 #' @param refined_x A vector of locations to evaluate the O-spline basis
@@ -683,7 +685,7 @@ global_poly_helper <- function(x, p = 2) {
 #'   lines(result[, (i + 1)] ~ result$x, lty = "dashed", ylim = c(-0.1, 0.1))
 #' }
 #' @export
-compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, degree = 0) {
+compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, degree = 0, intercept_samps = NULL) {
   if (p <= degree) {
     return(message("Error: The degree of derivative to compute is not defined. Should consider higher order smoothing model or lower order of the derivative degree."))
   }
@@ -696,6 +698,19 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
   if (ncol(samps) != ncol(global_samps)) {
     return(message("Error: The numbers of posterior samples do not match between the O-splines and global polynomials."))
   }
+  if (is.null(intercept_samps)) {
+    intercept_samps <- matrix(0, nrow = 1, ncol = ncol(samps))
+  }
+  if (nrow(intercept_samps) != (1)) {
+    return(message("Error: Incorrect dimension of intercept_samps."))
+  }
+  if (ncol(samps) != ncol(intercept_samps)) {
+    return(message("Error: The numbers of posterior samples do not match between the O-splines and the intercept."))
+  }
+  
+  ### Augment the global_samps to also consider the intercept
+  global_samps <- rbind(intercept_samps, global_samps)
+  
   ## Design matrix for the spline basis weights
   B <- dgTMatrix_wrapper(local_poly_helper(knots, refined_x = refined_x, p = (p - degree)))
   
@@ -705,7 +720,7 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
     for (i in 1:ncol(X)) {
       X[, i] <- (factorial(i + degree - 1) / factorial(i - 1)) * X[, i]
     }
-    fitted_samps_deriv <- X[,-1] %*% global_samps[(1 + degree):(p-1), ,drop = FALSE] + B %*% samps
+    fitted_samps_deriv <- X %*% global_samps[(1 + degree):(p), ,drop = FALSE] + B %*% samps
   }
   else {
     fitted_samps_deriv <- B %*% samps
