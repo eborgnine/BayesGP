@@ -57,7 +57,7 @@ library(aghq)
 #' IWP2 <- fit_result$instances[[2]]
 #' mod <- fit_result$mod
 #' @export
-model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed) {
+model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4) {
   # parse the input formula
   parse_result <- parse_formula(formula)
   response_var <- parse_result$response
@@ -164,7 +164,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     }
   }
 
-  result_by_method <- get_result_by_method(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects)
+  result_by_method <- get_result_by_method(instances = instances, design_mat_fixed = design_mat_fixed, family = family, control.family = control.family, control.fixed = control.fixed, fixed_effects = fixed_effects, aghq_k = aghq_k)
   mod <- result_by_method$mod
   w_count <- result_by_method$w_count
 
@@ -504,7 +504,7 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-get_result_by_method <- function(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k = 4, size = NULL) {
+get_result_by_method <- function(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size = NULL) {
   # Family types: Gaussian - 0, Poisson - 1, Binomial - 2
   if (family == "Gaussian"){
     family_type = 0
@@ -539,15 +539,13 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     if(class(instance) == "IWP"){
       X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
       betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
+      w_count <- w_count + ncol(instance@X)
     }
     B[[length(B) + 1]] <- dgTMatrix_wrapper(instance@B)
     P[[length(P) + 1]] <- dgTMatrix_wrapper(instance@P)
     logPdet[[length(logPdet) + 1]] <- as.numeric(determinant(instance@P, logarithm = TRUE)$modulus)
     u[[length(u) + 1]] <- instance@sd.prior$para$u
     alpha[[length(alpha) + 1]] <- instance@sd.prior$para$alpha
-    if(class(instance) == "IWP"){
-      w_count <- w_count + ncol(instance@X)
-    }
     w_count <- w_count + ncol(instance@B)
     theta_count <- theta_count + 1
   }
@@ -749,6 +747,8 @@ global_poly_helper <- function(x, p = 2) {
 #' be extracted using `sample_marginal` function from `aghq` package.
 #' @param global_samps A matrix that consists of posterior samples for the global basis coefficients. If NULL,
 #' assume there will be no global polynomials and the boundary conditions are exactly zero.
+#' @param intercept_samps A matrix that consists of posterior samples for the intercept parameter. If NULL, assume
+#' the function evaluated at zero is zero.
 #' @param knots A vector of knots used to construct the O-spline basis, first knot should be viewed as "0",
 #' the reference starting location. These k knots will define (k-1) basis function in total.
 #' @param refined_x A vector of locations to evaluate the O-spline basis
@@ -771,7 +771,7 @@ global_poly_helper <- function(x, p = 2) {
 #'   lines(result[, (i + 1)] ~ result$x, lty = "dashed", ylim = c(-0.1, 0.1))
 #' }
 #' @export
-compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, degree = 0) {
+compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, degree = 0, intercept_samps = NULL) {
   if (p <= degree) {
     return(message("Error: The degree of derivative to compute is not defined. Should consider higher order smoothing model or lower order of the derivative degree."))
   }
@@ -784,6 +784,19 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
   if (ncol(samps) != ncol(global_samps)) {
     return(message("Error: The numbers of posterior samples do not match between the O-splines and global polynomials."))
   }
+  if (is.null(intercept_samps)) {
+    intercept_samps <- matrix(0, nrow = 1, ncol = ncol(samps))
+  }
+  if (nrow(intercept_samps) != (1)) {
+    return(message("Error: Incorrect dimension of intercept_samps."))
+  }
+  if (ncol(samps) != ncol(intercept_samps)) {
+    return(message("Error: The numbers of posterior samples do not match between the O-splines and the intercept."))
+  }
+  
+  ### Augment the global_samps to also consider the intercept
+  global_samps <- rbind(intercept_samps, global_samps)
+  
   ## Design matrix for the spline basis weights
   B <- dgTMatrix_wrapper(local_poly_helper(knots, refined_x = refined_x, p = (p - degree)))
   
@@ -793,7 +806,7 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
     for (i in 1:ncol(X)) {
       X[, i] <- (factorial(i + degree - 1) / factorial(i - 1)) * X[, i]
     }
-    fitted_samps_deriv <- X[,-1] %*% global_samps[(1 + degree):(p-1), ,drop = FALSE] + B %*% samps
+    fitted_samps_deriv <- X %*% global_samps[(1 + degree):(p), ,drop = FALSE] + B %*% samps
   }
   else {
     fitted_samps_deriv <- B %*% samps

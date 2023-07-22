@@ -125,9 +125,13 @@ Type objective_function<Type>::operator() ()
   PARAMETER_VECTOR(theta);
 
   // Transformations
-  vector<Type> eta = X(0) * beta(0); // adding intercept
+  vector<Type> eta = Xf(0) * beta_fixed(0); // adding intercept
 
-  for (int i = 1; i < X.size(); i++){
+  for (int i = 1; i < Xf.size(); i++){
+    eta += Xf(i) * beta_fixed(i); // adding each fixed effect
+  }
+
+  for (int i = 0; i < X.size(); i++){
     eta += X(i) * beta(i);  // adding each boundary condition for RE
   }
 
@@ -135,9 +139,6 @@ Type objective_function<Type>::operator() ()
     eta += B(i) * U(i); // adding each local spline effect for RE
   }
 
-  for (int i = 0; i < Xf.size(); i++){
-    eta += Xf(i) * beta_fixed(i); // adding each fixed effect
-  }
 
   vector<Type> sigma(theta.size());
   for (int i = 0; i < theta.size(); i++){
@@ -167,9 +168,12 @@ Type objective_function<Type>::operator() ()
   // Cross product (for each RE and its boundary, and for fixed effect)
   // For Random Effects:
   for (int i = 0; i < X.size(); i++){
-    lpW += -0.5 * exp(theta(i)) * ((U(i) * (P(i) * U(i))).sum()); // U part (spline effect)
     Type bb = (beta(i) * beta(i)).sum();
     lpW += -0.5 * betaprec(i) * bb; // Beta part (boundary condition)
+  }
+
+  for (int i = 0; i < P.size(); i++){
+    lpW += -0.5 * exp(theta(i)) * ((U(i) * (P(i) * U(i))).sum()); // U part (spline effect)
     // Log determinant
     Type logdet = d(i) * theta(i) + logPdet(i);
     lpW += 0.5 * logdet; // P part
@@ -188,9 +192,10 @@ Type objective_function<Type>::operator() ()
     Type phi = -log(alpha(i)) / u(i);
     lpT += log(0.5 * phi) - phi*exp(-0.5*theta(i)) - 0.5*theta(i);
   }
-  
+
   // Final result!
   Type logpost = -1 * (ll + lpW + lpT);
+
   
   return logpost;
 }
