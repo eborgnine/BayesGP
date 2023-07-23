@@ -79,7 +79,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       stop("Error: For each random effect, sd.prior currently only supports 'exp' (exponential) as prior.")
     }
 
-    if(model_class == "IWP"){
+    if (model_class == "IWP") {
       order <- eval(rand_effect$order)
       knots <- eval(rand_effect$knots)
       k <- eval(rand_effect$k)
@@ -87,14 +87,14 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       if (!(is.null(k)) && k < 3) {
         stop("Error: Parameter <k> in the random effect part should be >= 3.")
       }
-      if(order < 1){
+      if (order < 1) {
         stop("Error: Parameter <order> in the random effect part should be >= 1.")
       }
       boundary.prior <- eval(rand_effect$boundary.prior)
       # If the user does not specify initial_location, compute initial_location with
       # the min of data[[smoothing_var]]
-      if (is.null(initial_location)){
-        initial_location = min(data[[smoothing_var]])
+      if (is.null(initial_location)) {
+        initial_location <- min(data[[smoothing_var]])
       }
       # If the user does not specify knots, compute knots with
       # the parameter k
@@ -113,9 +113,9 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
         boundary.prior <- list(prec = 0.01)
       }
       instance <- new(model_class,
-                      response_var = response_var,
-                      smoothing_var = smoothing_var, order = order,
-                      knots = knots, observed_x = observed_x, sd.prior = sd.prior, boundary.prior = boundary.prior, data = data
+        response_var = response_var,
+        smoothing_var = smoothing_var, order = order,
+        knots = knots, observed_x = observed_x, sd.prior = sd.prior, boundary.prior = boundary.prior, data = data
       )
       # Case for IWP
       instance@initial_location <- initial_location
@@ -123,11 +123,10 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instance@B <- local_poly(instance)
       instance@P <- compute_weights_precision(instance)
       instances[[length(instances) + 1]] <- instance
-    }
-    else if(model_class == "IID"){
+    } else if (model_class == "IID") {
       instance <- new(model_class,
-                      response_var = response_var,
-                      smoothing_var = smoothing_var, sd.prior = sd.prior, data = data
+        response_var = response_var,
+        smoothing_var = smoothing_var, sd.prior = sd.prior, data = data
       )
       # Case for IID
       instance@B <- compute_B(instance)
@@ -177,7 +176,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   for (instance in instances) {
     sum_col_ins <- sum_col_ins + ncol(instance@B)
     rand_effects_names <- c(rand_effects_names, instance@smoothing_var)
-    if(class(instance) == "IWP"){
+    if (class(instance) == "IWP") {
       global_effects_names <- c(global_effects_names, instance@smoothing_var)
     }
   }
@@ -187,12 +186,11 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   cur_coef_start <- 1
   cur_coef_end <- 0
   for (instance in instances) {
-    if(class(instance) == "IWP"){
+    if (class(instance) == "IWP") {
       cur_end <- cur_end + ncol(instance@X)
-      if(instance@order == 1){
+      if (instance@order == 1) {
         global_samp_indexes[[length(global_samp_indexes) + 1]] <- numeric()
-      }
-      else if(instance@order > 1){
+      } else if (instance@order > 1) {
         global_samp_indexes[[length(global_samp_indexes) + 1]] <- (cur_start:cur_end)
       }
     }
@@ -254,28 +252,34 @@ setClass("IID", slots = list(
 
 #' @export
 summary.FitResult <- function(object) {
-  # aghq_summary <- summary(object$mod)
-  # fit_result_summary <- tail(aghq_summary, n = 1)
-  # new_line <- paste(" ", "Here are some moments and quantiles for the log precision:")
-  # fit_result_summary <- structure(c(fit_result_summary, new_line))
-  # fit_result_summary <- paste(fit_result_summary, "Here are some moments and quantiles for the log precision: \n")
-  # cat(aghq_summary)
-  # cat("Here are some moments and quantiles for the log precision: ")
-  # print(summary(object$mod))
-  # cat("Here are some moments and quantiles for the log precision: \n")
+  aghq_summary <- summary(object$mod)
+  aghq_output <- capture.output(aghq_summary)
+  cur_index <- grep("Here are some moments and quantiles for the transformed parameter:", aghq_output)
+  cat(paste(aghq_output[1:(cur_index - 1)], collapse = "\n"))
+  cat("\nHere are some moments and quantiles for the log precision: \n")
+  cur_index <- grep("median    97.5%", aghq_output)
+  cat(paste(aghq_output[cur_index], collapse = "\n"))
 
-  # TODO: Add and modify summary from AGHQ
+  summary_table <- as.matrix(aghq_summary$summarytable)
+  theta_names <- c()
+  for (instance in object$instances) {
+    theta_names <- c(theta_names, paste("theta(", toString(instance@smoothing_var), ")", sep = ""))
+  }
 
-  samps <- aghq::sample_marginal(mod, M = 3000)
-  fixed_samps <- samps$samps[unlist(fit_result$fixed_samp_indexes), , drop = F]
+  row.names(summary_table) <- theta_names
+  print(summary_table)
+  cat("\n")
+
+  samps <- aghq::sample_marginal(object$mod, M = 3000)
+  fixed_samps <- samps$samps[unlist(object$fixed_samp_indexes), , drop = F]
   fixed_summary <- fixed_samps %>% apply(MARGIN = 1, summary)
-  colnames(fixed_summary) <- names(fit_result$fixed_samp_indexes)
+  colnames(fixed_summary) <- names(object$fixed_samp_indexes)
   fixed_sd <- fixed_samps %>% apply(MARGIN = 1, sd)
   fixed_summary <- rbind(fixed_summary, fixed_sd)
   rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
 
-  cat("Here are some moments and quantiles for the fixed effects: \n")
-  print(t(fixed_summary[c(2:5,7),]))
+  cat("Here are some moments and quantiles for the fixed effects: \n\n")
+  print(t(fixed_summary[c(2:5, 7), ]))
 }
 
 #' @export
@@ -284,7 +288,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0) {
   global_samps <- samps$samps[object$boundary_samp_indexes[[variable]], , drop = F]
   coefsamps <- samps$samps[object$random_samp_indexes[[variable]], ]
   for (instance in object$instances) {
-    if (instance@smoothing_var == variable && class(instance) == "IWP"){
+    if (instance@smoothing_var == variable && class(instance) == "IWP") {
       IWP <- instance
       break
     }
@@ -296,9 +300,8 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0) {
 
   ## Step 2: Initialization
   if (is.null(newdata)) {
-    refined_x_final = IWP@observed_x
-  }
-  else{
+    refined_x_final <- IWP@observed_x
+  } else {
     refined_x_final <- sort(newdata[[variable]] - IWP@initial_location) # initialize according to `initial_location`
   }
 
@@ -321,12 +324,14 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0) {
 #' @export
 plot.FitResult <- function(object) {
   ### Step 1: predict with newdata = NULL
-  for (instance in object$instances){ ## for each variable in model_fit
-    if (class(instance) == "IWP"){
+  for (instance in object$instances) { ## for each variable in model_fit
+    if (class(instance) == "IWP") {
       predict_result <- predict(object, variable = as.character(instance@smoothing_var))
-      matplot(x = predict_result$x, y = predict_result[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1), 
-              col = "black", type = 'l', 
-              ylab = "effect", xlab = as.character(instance@smoothing_var))
+      matplot(
+        x = predict_result$x, y = predict_result[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1),
+        col = "black", type = "l",
+        ylab = "effect", xlab = as.character(instance@smoothing_var)
+      )
     }
   }
 
@@ -340,7 +345,7 @@ setGeneric("compute_B", function(object) {
 setMethod("compute_B", signature = "IID", function(object) {
   smoothing_var <- object@smoothing_var
   x <- as.factor((object@data)[[smoothing_var]])
-  B <- model.matrix(~-1+x)
+  B <- model.matrix(~ -1 + x)
   B
 })
 
@@ -364,7 +369,7 @@ setMethod("local_poly", signature = "IWP", function(object) {
   refined_x <- (object@data)[[smoothing_var]] - initial_location
   p <- object@order
   # TODO: refactor this part
-  if (min(knots) >= 0){ 
+  if (min(knots) >= 0) {
     # The following part only works with all-positive knots
     dif <- diff(knots)
     nn <- length(refined_x)
@@ -382,8 +387,7 @@ setMethod("local_poly", signature = "IWP", function(object) {
         }
       }
     }
-  }
-  else if(max(knots) <= 0){
+  } else if (max(knots) <= 0) {
     # Handle the negative part only
     refined_x_neg <- refined_x
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
@@ -405,8 +409,7 @@ setMethod("local_poly", signature = "IWP", function(object) {
         }
       }
     }
-  }
-  else{
+  } else {
     # Handle the negative part
     refined_x_neg <- refined_x
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
@@ -428,7 +431,7 @@ setMethod("local_poly", signature = "IWP", function(object) {
         }
       }
     }
-    
+
     # Handle the positive part
     refined_x_pos <- refined_x
     refined_x_pos <- ifelse(refined_x > 0, refined_x, 0)
@@ -482,15 +485,13 @@ setGeneric("compute_weights_precision", function(object) {
 })
 setMethod("compute_weights_precision", signature = "IWP", function(object) {
   knots <- object@knots
-  if(min(knots) >= 0){
+  if (min(knots) >= 0) {
     as(diag(diff(knots)), "matrix")
-  }
-  else if(max(knots) < 0){
+  } else if (max(knots) < 0) {
     knots_neg <- knots
     knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
     as(diag(diff(knots_neg)), "matrix")
-  }
-  else{
+  } else {
     knots_neg <- knots
     knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
     knots_pos <- knots
@@ -500,22 +501,20 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
     Precweights1 <- diag(d1)
     Precweights2 <- diag(d2)
     as(Matrix::bdiag(Precweights1, Precweights2), "matrix")
-    }
+  }
 })
 
 
 get_result_by_method <- function(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size = NULL) {
   # Family types: Gaussian - 0, Poisson - 1, Binomial - 2
-  if (family == "Gaussian"){
-    family_type = 0
+  if (family == "Gaussian") {
+    family_type <- 0
+  } else if (family == "Poisson") {
+    family_type <- 1
+  } else if (family == "Binomial") {
+    family_type <- 2
   }
-  else if (family == "Poisson"){
-    family_type = 1
-  }
-  else if (family == "Binomial"){
-    family_type = 2
-  }
-  
+
   # Containers for random effects
   X <- list()
   B <- list()
@@ -536,7 +535,7 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
 
   for (instance in instances) {
     # For each random effects
-    if(class(instance) == "IWP"){
+    if (class(instance) == "IWP") {
       X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
       betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
       w_count <- w_count + ncol(instance@X)
@@ -552,7 +551,7 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
 
   # For the variance of the Gaussian family
   # From control.family, if applicable
-  if (family_type == 0){
+  if (family_type == 0) {
     u[[length(u) + 1]] <- control.family$sd_prior$para$u
     alpha[[length(alpha) + 1]] <- control.family$sd_prior$para$alpha
   }
@@ -587,9 +586,9 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     # Family type
     family_type = family_type
   )
-  
+
   # If Family == "Binomial", check whether size is defined in user's input
-  if(family_type == 2 & is.null(size)){
+  if (family_type == 2 & is.null(size)) {
     tmbdat$size <- numeric(length = length(tmbdat$y)) + 1 # A vector of 1s being default
   }
 
@@ -628,7 +627,7 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
 #' @export
 local_poly_helper <- function(knots, refined_x, p = 2) {
   # TODO: refactor this part
-  if (min(knots) >= 0){ 
+  if (min(knots) >= 0) {
     # The following part only works with all-positive knots
     dif <- diff(knots)
     nn <- length(refined_x)
@@ -646,8 +645,7 @@ local_poly_helper <- function(knots, refined_x, p = 2) {
         }
       }
     }
-  }
-  else if(max(knots) <= 0){
+  } else if (max(knots) <= 0) {
     # Handle the negative part only
     refined_x_neg <- refined_x
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
@@ -669,8 +667,7 @@ local_poly_helper <- function(knots, refined_x, p = 2) {
         }
       }
     }
-  }
-  else{
+  } else {
     # Handle the negative part
     refined_x_neg <- refined_x
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
@@ -692,7 +689,7 @@ local_poly_helper <- function(knots, refined_x, p = 2) {
         }
       }
     }
-    
+
     # Handle the positive part
     refined_x_pos <- refined_x
     refined_x_pos <- ifelse(refined_x > 0, refined_x, 0)
@@ -776,9 +773,9 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
     return(message("Error: The degree of derivative to compute is not defined. Should consider higher order smoothing model or lower order of the derivative degree."))
   }
   if (is.null(global_samps)) {
-    global_samps <- matrix(0, nrow = (p-1), ncol = ncol(samps))
+    global_samps <- matrix(0, nrow = (p - 1), ncol = ncol(samps))
   }
-  if (nrow(global_samps) != (p-1)) {
+  if (nrow(global_samps) != (p - 1)) {
     return(message("Error: Incorrect dimension of global_samps. Check whether the choice of p is consistent with the fitted model."))
   }
   if (ncol(samps) != ncol(global_samps)) {
@@ -793,22 +790,21 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
   if (ncol(samps) != ncol(intercept_samps)) {
     return(message("Error: The numbers of posterior samples do not match between the O-splines and the intercept."))
   }
-  
+
   ### Augment the global_samps to also consider the intercept
   global_samps <- rbind(intercept_samps, global_samps)
-  
+
   ## Design matrix for the spline basis weights
   B <- dgTMatrix_wrapper(local_poly_helper(knots, refined_x = refined_x, p = (p - degree)))
-  
-  if ((p - degree) > 1){
+
+  if ((p - degree) > 1) {
     X <- global_poly_helper(refined_x, p = p)
     X <- as.matrix(X[, 1:(p - degree)])
     for (i in 1:ncol(X)) {
       X[, i] <- (factorial(i + degree - 1) / factorial(i - 1)) * X[, i]
     }
-    fitted_samps_deriv <- X %*% global_samps[(1 + degree):(p), ,drop = FALSE] + B %*% samps
-  }
-  else {
+    fitted_samps_deriv <- X %*% global_samps[(1 + degree):(p), , drop = FALSE] + B %*% samps
+  } else {
     fitted_samps_deriv <- B %*% samps
   }
   result <- cbind(x = refined_x, data.frame(as.matrix(fitted_samps_deriv)))
