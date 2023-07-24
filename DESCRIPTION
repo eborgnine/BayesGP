@@ -8,11 +8,15 @@ Description: To construct O-spline function that approximates the univariate smo
 License: file LICENSE
 Encoding: UTF-8
 LazyData: true
-RoxygenNote: 7.2.1
+RoxygenNote: 7.2.3
 LinkingTo: TMB, RcppEigen
 Imports: TMB, RcppEigen
 Depends: TMB, RcppEigen
-Suggests: rmarkdown, knitr
+Suggests: 
+    rmarkdown,
+    knitr,
+    testthat (>= 3.0.0)
 VignetteBuilder: knitr
 NeedsCompilation: yes
 Packaged: 2022-05-25 19:43:27 UTC; ziangzhang
+Config/testthat/edition: 3
