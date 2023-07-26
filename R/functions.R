@@ -159,7 +159,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   if (missing(control.fixed)) {
     control.fixed <- list(intercept = list(prec = 0.01))
     for (fixed_effect in fixed_effects) {
-      control.fixed$fixed_effect <- list(prec = 0.01)
+      control.fixed[[fixed_effect]] <- list(prec = 0.01)
     }
   }
 
@@ -604,6 +604,7 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     DLL = "OSplines",
     silent = TRUE
   )
+  ff$fn(c(0,0))
 
   # Hessian not implemented for RE models
   ff$he <- function(w) numDeriv::jacobian(ff$gr, w)

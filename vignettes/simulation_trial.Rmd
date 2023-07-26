@@ -72,16 +72,14 @@ Given the set of knots, we can easily construct the basis function $\varphi_i$ a
 
 ```{r}
 fit_result <- model_fit(
-  response ~ location + f(
-    smoothing_var = year,
+  response ~ location + f(smoothing_var = year,
     model = "IWP", k = 100,
     order = polyOrder1, initial_location = NULL,
-  ) + f(
-    smoothing_var = index,
+  ) + f(smoothing_var = index,
     model = "IID",
     sd.prior = list(prior = "exp", para = list(u = 2, alpha = 0.5))
-  )
-  + score,
+  ) + f(score, model = "IWP", k = 100,
+    order = polyOrder2, initial_location = NULL),
   data = data, method = "aghq", family = "Binomial",
   control.family = list(sd_prior = list(prior = "exp", para = list(u = 1, alpha = 0.5))),
   control.fixed = list(intercept = list(prec = 0.01), location = list(prec = 0.01), score = list(prec = 0.01))
