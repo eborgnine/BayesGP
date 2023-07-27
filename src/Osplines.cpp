@@ -90,13 +90,15 @@ Type objective_function<Type>::operator() ()
     beta_fixed(i) = cur_beta_fixed;
   }
 
+  int cur_dim_sum  = 0;
   for (int j = 0; j < d.size(); j++){
     if (j == 0){
       for (int i=0;i<d(j);i++) U(j)(i) = W(i);
     }
     else{
-      for (int i=0;i<d(j);i++) U(j)(i) = W(i + d(j-1));
+      for (int i=0;i<d(j);i++) U(j)(i) = W(i + cur_dim_sum);
     }
+    cur_dim_sum += d(j);
   }
 
   for (int j=0;j<betadim.size();j++){
