@@ -10,7 +10,8 @@ model_fit(
   method = "aghq",
   family = "Gaussian",
   control.family,
-  control.fixed
+  control.fixed,
+  aghq_k = 4
 )
 }
 \arguments{

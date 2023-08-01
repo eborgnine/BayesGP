@@ -99,6 +99,7 @@ mod2 <- fit_result_2$mod
 slotNames(IWP1)
 names(mod1)
 ```
+
 ## Inference
 Now, let's obtain the posterior samples of $\boldsymbol{w}$ for O spline basis and $\boldsymbol{\beta}$ for global polynomials:
 

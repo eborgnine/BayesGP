@@ -604,7 +604,6 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     DLL = "OSplines",
     silent = TRUE
   )
-  ff$fn(c(0,0))
 
   # Hessian not implemented for RE models
   ff$he <- function(w) numDeriv::jacobian(ff$gr, w)

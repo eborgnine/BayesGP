@@ -5,7 +5,15 @@
 \title{Computing the posterior samples of the function or its derivative using the posterior samples
 of the basis coefficients}
 \usage{
-compute_post_fun(samps, global_samps = NULL, knots, refined_x, p, degree = 0)
+compute_post_fun(
+  samps,
+  global_samps = NULL,
+  knots,
+  refined_x,
+  p,
+  degree = 0,
+  intercept_samps = NULL
+)
 }
 \arguments{
 \item{samps}{A matrix that consists of posterior samples for the O-spline basis coefficients. Each column
@@ -23,6 +31,9 @@ the reference starting location. These k knots will define (k-1) basis function 
 \item{p}{An integer value indicates the order of smoothness}
 
 \item{degree}{The order of the derivative to take, if zero, implies to consider the function itself.}
+
+\item{intercept_samps}{A matrix that consists of posterior samples for the intercept parameter. If NULL, assume
+the function evaluated at zero is zero.}
 }
 \value{
 A data.frame that contains different samples of the function or its derivative, with the first column
