@@ -12,8 +12,6 @@ RoxygenNote: 7.2.3
 LinkingTo: TMB, RcppEigen
 Imports: TMB, RcppEigen
 Depends: 
-    TMB,
-    RcppEigen,
     R (>= 2.10),
     tidyverse,
     Matrix,
