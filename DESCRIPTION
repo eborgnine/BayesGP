@@ -2,8 +2,8 @@ Package: OSplines
 Type: Package
 Title: Constructing O Spline for univariate smoothing
 Version: 0.1.1
-Author: Ziang Zhang
-Maintainer: <aguero.zhang@mail.utoronto.ca>
+Authors: Ziang Zhang, Yongwei Lin
+Maintainer: <aguero.zhang@mail.utoronto.ca>, <yongwei.lin@mail.utoronto.ca>
 Description: To construct O-spline function that approximates the univariate smoothing with Integrated Wiener's process, at different smoothness order.
 License: file LICENSE
 Encoding: UTF-8
@@ -14,7 +14,10 @@ Imports: TMB, RcppEigen
 Depends: 
     TMB,
     RcppEigen,
-    R (>= 2.10)
+    R (>= 2.10),
+    tidyverse,
+    Matrix,
+    aghq
 Suggests: 
     rmarkdown,
     knitr,

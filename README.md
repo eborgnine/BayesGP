@@ -30,10 +30,8 @@ mortality in Canada, which is available in the package:
 library(OSplines)
 #> Loading required package: TMB
 #> Loading required package: RcppEigen
-library(tidyverse)
-#> ── Attaching packages
-#> ───────────────────────────────────────
-#> tidyverse 1.3.2 ──
+#> Loading required package: tidyverse
+#> ── Attaching packages ─────────────────────────────────────── tidyverse 1.3.2 ──
 #> ✔ ggplot2 3.4.1      ✔ purrr   0.3.4 
 #> ✔ tibble  3.1.8      ✔ dplyr   1.0.10
 #> ✔ tidyr   1.2.1      ✔ stringr 1.4.1 
@@ -41,6 +39,18 @@ library(tidyverse)
 #> ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
 #> ✖ dplyr::filter() masks stats::filter()
 #> ✖ dplyr::lag()    masks stats::lag()
+#> Loading required package: Matrix
+#> 
+#> 
+#> Attaching package: 'Matrix'
+#> 
+#> 
+#> The following objects are masked from 'package:tidyr':
+#> 
+#>     expand, pack, unpack
+#> 
+#> 
+#> Loading required package: aghq
 ## basic example code
 head(covid_canada)
 #>         Date new_deaths        t weekdays1 weekdays2 weekdays3 weekdays4
@@ -96,13 +106,13 @@ summary(fit_result)
 #> Here are some moments and quantiles for the fixed effects: 
 #> 
 #>               1st Qu.      Median        Mean     3rd Qu.         sd
-#> Intercept -5.80667811 -5.38789996 -5.37829991 -4.94611326 0.64951319
-#> weekdays1  0.08568343  0.09376493  0.09367625  0.10193581 0.01188417
-#> weekdays2  0.07150269  0.07982793  0.07954254  0.08774160 0.01209838
-#> weekdays3  0.11873636  0.12667208  0.12661750  0.13462194 0.01182998
-#> weekdays4  0.11760962  0.12531054  0.12530220  0.13305915 0.01192300
-#> weekdays5  0.04219032  0.05022941  0.05039113  0.05852514 0.01208380
-#> weekdays6 -0.16062161 -0.15147173 -0.15142907 -0.14202331 0.01340727
+#> Intercept -5.84680887 -5.40264469 -5.39627108 -4.95906051 0.66962288
+#> weekdays1  0.08546255  0.09383360  0.09383068  0.10213568 0.01217860
+#> weekdays2  0.07154094  0.07982370  0.07968487  0.08785223 0.01189865
+#> weekdays3  0.11886095  0.12690584  0.12690201  0.13501819 0.01186118
+#> weekdays4  0.11731460  0.12552174  0.12545587  0.13331567 0.01166223
+#> weekdays5  0.04153096  0.04968221  0.04982342  0.05786317 0.01196515
+#> weekdays6 -0.16047394 -0.15173030 -0.15151600 -0.14247526 0.01327977
 ```
 
 We can also see the inferred function $f$:
@@ -114,7 +124,9 @@ plot(fit_result)
 <img src="man/figures/README-unnamed-chunk-4-1.png" width="100%" />
 
 We can use the `predict` function to obtain the posterior summary of $f$
-or its derivative at `new_data`:
+or its derivative at `new_data`.
+
+For the function $f$:
 
 ``` r
 predict_f <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 617, by = 0.1)))
@@ -126,7 +138,7 @@ predict_f %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
 
 <img src="man/figures/README-unnamed-chunk-5-1.png" width="100%" />
 
-for the first derivative:
+For the first derivative:
 
 ``` r
 predict_f1st <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 617, by = 0.1)), degree = 1)
@@ -138,7 +150,7 @@ predict_f1st %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
 
 <img src="man/figures/README-unnamed-chunk-6-1.png" width="100%" />
 
-for the second derivative:
+For the second derivative:
 
 ``` r
 predict_f2nd <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 617, by = 0.1)), degree = 2)
