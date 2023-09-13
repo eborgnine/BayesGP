@@ -1,8 +1,8 @@
 ---
-title: "OSplines-Example"
+title: "OSplines: Basic Example"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{OSplines-Example}
+  %\VignetteIndexEntry{OSplines: Basic Example}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---

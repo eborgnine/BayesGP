@@ -1,8 +1,8 @@
 ---
-title: "OSplines-Example: COVID-19"
+title: "OSplines: COVID-19 Example"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{OSplines-Example}
+  %\VignetteIndexEntry{OSplines: COVID-19 Example}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
