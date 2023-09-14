@@ -49,7 +49,7 @@ Here $\xi(t)$ is the standard Gaussian white noise process, or can be viewed as 
 To fit the above model using the OSpline package, we simply do the following:
 ```{r warning=FALSE}
 fit_result <- model_fit(new_deaths ~ weekdays1 + weekdays2 + weekdays3 + weekdays4 + weekdays5 + weekdays6 +
-                          f(smoothing_var = t, model = "IWP", order = 3, k = 30), 
+                          f(smoothing_var = t, model = "IWP", order = 3, k = 100, sd.prior = list(prior = "exp", para = list(u = 0.02, alpha = 0.5))), 
                         data = covid_canada, method = "aghq", family = "Poisson")
 ```
 
@@ -68,21 +68,21 @@ We can use the `predict` function to obtain the posterior summary of $f$ or its 
 
 For the function $f$:
 ```{r warning=FALSE}
-predict_f <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 617, by = 0.1)))
+predict_f <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 615, by = 0.1)))
 predict_f %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
   geom_line(aes(y = plower), lty = "dashed") +
   geom_line(aes(y = pupper), lty = "dashed") +
-  theme_classic()
+  theme_classic() + xlim(c(605,615)) + ylim(0,6)
 ```
 
 
 For the first derivative:
 ```{r warning=FALSE}
-predict_f1st <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 617, by = 0.1)), degree = 1)
+predict_f1st <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 615, by = 0.1)), degree = 1)
 predict_f1st %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
   geom_line(aes(y = plower), lty = "dashed") +
   geom_line(aes(y = pupper), lty = "dashed") +
-  theme_classic()
+  theme_classic() + xlim(c(605,615)) + ylim(c(-3,5))
 ```
 
 
@@ -94,4 +94,54 @@ predict_f2nd %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
   geom_line(aes(y = pupper), lty = "dashed") +
   theme_classic()
 ```
+
+
+
+## Inference with R-INLA
+
+A similar model with an IWP component could be fitted using the software [R-INLA](https://www.r-inla.org/). Instead of using an O-Spline approximation, the R-INLA software uses the augmented space approach to fit the IWP component. The R-INLA software implements two possible choices of the IWP model: the first order IWP (`crw1`) or the second order IWP (`crw2`). 
+
+Since the third IWP is not compatible with the R-INLA software, here we use the second order IWP as an example:
+
+To fit the model and make inference of the function $f$:
+
+```{r}
+if(requireNamespace("INLA", quietly=TRUE)) {
+
+  inla_result <- INLA::inla(formula = new_deaths~-1 + weekdays1 + weekdays2 + weekdays3 + weekdays4 + weekdays5 + weekdays6 + f(t, model = "crw2", constr = F, hyper = list(prec = list(prior = "pc.prec", param = c(0.02, 0.5)))), data = covid_canada, family = "Poisson", control.compute=list(config = TRUE))
+  
+  inla_result$summary.random$t %>% filter(ID >= 0) %>% ggplot(aes(x = ID)) + geom_line(aes(y = mean), lty = "solid") +
+  geom_line(aes(y = `0.025quant`), lty = "dashed") +
+  geom_line(aes(y = `0.975quant`), lty = "dashed") +
+  theme_classic() + xlim(c(605,615)) + ylim(0,6)
+  
+}
+
+```
+
+
+
+To make inference of the first derivative $f'$:
+
+```{r}
+if(requireNamespace("INLA", quietly=TRUE)) {
+
+  inla_result$summary.random$t %>% filter(ID <= 0) %>% mutate(ID = -ID) %>% 
+  ggplot(aes(x = ID)) + geom_line(aes(y = mean), lty = "solid") +
+  geom_line(aes(y = `0.025quant`), lty = "dashed") +
+  geom_line(aes(y = `0.975quant`), lty = "dashed") +
+  theme_classic() + xlim(c(605,615)) + ylim(c(-3,5))
+  
+}
+```
+
+
+
+The inferential result of the function $f$ using R-INLA is comparable to the result using `OSpline`  The inference of derivative, on the other hand, tends to be more wiggly using R-INLA. This difference is due to the lower order IWP used in the model. The highest order IWP that R-INLA accommodates is the second order IWP, which only assumes the function to be once differentiable, whereas the third order IWP used by `OSpline` assumes the function to be twice differentiable.
+
+
+
+
+
+ 
 

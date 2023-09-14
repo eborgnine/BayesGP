@@ -283,7 +283,7 @@ summary.FitResult <- function(object) {
 }
 
 #' @export
-predict.FitResult <- function(object, newdata = NULL, variable, degree = 0) {
+predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, include.intercept = TRUE) {
   samps <- aghq::sample_marginal(object$mod, M = 3000)
   global_samps <- samps$samps[object$boundary_samp_indexes[[variable]], , drop = F]
   coefsamps <- samps$samps[object$random_samp_indexes[[variable]], ]
@@ -304,6 +304,13 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0) {
   } else {
     refined_x_final <- sort(newdata[[variable]] - IWP@initial_location) # initialize according to `initial_location`
   }
+  
+  if(include.intercept){
+    intercept_samps <- samps$samps[object$fixed_samp_indexes[["Intercept"]], , drop = F]
+  } else{
+    intercept_samps <- NULL
+  }
+  
 
   ## Step 3: apply `compute_post_fun` to samps
   f <- compute_post_fun(
@@ -311,7 +318,8 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0) {
     knots = IWP@knots,
     refined_x = refined_x_final,
     p = IWP@order, ## check this order or p?
-    degree = degree
+    degree = degree,
+    intercept_samps = intercept_samps
   )
 
   ## Step 4: summarize the prediction
