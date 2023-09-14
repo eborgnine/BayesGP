@@ -26,7 +26,7 @@ You can install the development version of OSplines from [GitHub](https://github
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("Smoothing-IWP/OSplines")
+devtools::install_github("https://github.com/Smoothing-IWP/OSplines/tree/development")
 ```
 
 ## Example
