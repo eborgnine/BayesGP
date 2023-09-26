@@ -162,8 +162,33 @@ Type objective_function<Type>::operator() ()
     DATA_VECTOR(size); // Size vector for binomial data
     ll = sum(dbinom_robust(y, size, eta, TRUE));
   } 
+     // family = 'sum(dbinom_robust(y, size, eta, TRUE)'
+  else if (family_type == 3){
+    DATA_IVECTOR(cens); // cens vector for coxph data
+    DATA_IVECTOR(ranks);
+    DATA_SPARSE_MATRIX(D); // Differencing matrix to compute delta;
+    // Log likelihood
+    int n = y.size(); // Sample size
+    vector<Type> delta_red = D * eta;
+    vector<Type> delta(n);
+    delta(0) = 0;
+    for (int i=1;i<n;i++) {
+      delta(i) = delta_red(i-1);
+      }
+    for (int i=0;i<n;i++){
+      int nn = n-ranks(i)+1;
+      vector<Type> delta_vec_i(nn); //rank starts at 1!!!
+      for(int j=0;j<nn;j++) {
+        delta_vec_i(j) = delta(n - nn + j);
+      }
+      vector<Type> diffvec(nn);
+      for (int j=0;j<nn;j++) {
+        diffvec(j) = exp(delta(i) - delta_vec_i(j));
+      }
+      ll += -cens(i) * log(diffvec.sum());
+  }
+  } 
   REPORT(ll);
-  
 
   // Log prior on W
   Type lpW = 0;

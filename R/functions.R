@@ -21,43 +21,9 @@
 #' @return A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for
 #' the fixed effects (design_mat_fixed), fitted aghq (mod) and indexes to partition the posterior samples
 #' (boundary_samp_indexes, random_samp_indexes and fixed_samp_indexes).
-#' @examples
-#' library(OSplines)
-#' library(tidyverse)
 #'
-#' data <- INLA::Munich %>% select(rent, floor.size, year, location)
-#' data$score <- rnorm(n = nrow(data))
-#' head(data, n = 5)
-#'
-#' ### A model with two IWP and two Fixed effects:
-#' ## Assume f(floor.size) is second order IWP
-#' ## Assume f(year) is third order IWP
-#'
-#' fit_result <- model_fit(
-#'   rent ~ location + f(
-#'     smoothing_var = floor.size,
-#'     model = "IWP",
-#'     order = 2
-#'   )
-#'   + score + f(
-#'       smoothing_var = year,
-#'       model = "IWP",
-#'       order = 3, k = 10, # should add a checker for k >= 3
-#'       sd.prior = list(prior = "exp", para = list(u = 1, alpha = 0.5)),
-#'       boundary.prior = list(prec = 0.01)
-#'     ),
-#'   data = data, method = "aghq", family = "Gaussian",
-#'   control.family = list(sd_prior = list(prior = "exp", para = list(u = 1, alpha = 0.5))),
-#'   control.fixed = list(intercept = list(prec = 0.01), location = list(prec = 0.01), score = list(prec = 0.01))
-#' )
-#'
-#' # Check the contents of the returned fit result
-#' names(fit_result)
-#' IWP1 <- fit_result$instances[[1]]
-#' IWP2 <- fit_result$instances[[2]]
-#' mod <- fit_result$mod
 #' @export
-model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4) {
+model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4, size = NULL, cens = NULL) {
   # parse the input formula
   parse_result <- parse_formula(formula)
   response_var <- parse_result$response
@@ -66,14 +32,32 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
 
   instances <- list()
   design_mat_fixed <- list()
+  
+  family_is_coxph <- FALSE
+  if(family == "Coxph" || family == "coxph"){
+    family_is_coxph <- TRUE
+    data <- data[order(data[[response_var]]), ]
+  }
 
   # For random effects
   for (rand_effect in rand_effects) {
     smoothing_var <- rand_effect$smoothing_var
+    if(is.null(smoothing_var)){
+      smoothing_var <- rand_effect$x
+      if(is.null(smoothing_var)){
+        stop("The covariate name must be specified as smoothing_var or x.")
+      }
+    }
     model_class <- rand_effect$model
     sd.prior <- eval(rand_effect$sd.prior)
     if (is.null(sd.prior)) {
-      sd.prior <- list(prior = "exp", para = list(u = 1, alpha = 0.5))
+      sd.prior <- eval(rand_effect$prior)
+      if(is.null(sd.prior)){
+        sd.prior <- list(prior = "exp", param = list(u = 1, alpha = 0.5))
+      }
+    }
+    if (length(sd.prior) == 1){
+      sd.prior <- list(prior = "exp", param = list(u = as.numeric(sd.prior), alpha = 0.5))
     }
     if (sd.prior$prior != "exp") {
       stop("Error: For each random effect, sd.prior currently only supports 'exp' (exponential) as prior.")
@@ -85,7 +69,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       k <- eval(rand_effect$k)
       initial_location <- eval(rand_effect$initial_location)
       if (!(is.null(k)) && k < 3) {
-        stop("Error: Parameter <k> in the random effect part should be >= 3.")
+        stop("Error: parameter <k> in the random effect part should be >= 3.")
       }
       if (order < 1) {
         stop("Error: Parameter <order> in the random effect part should be >= 1.")
@@ -123,7 +107,8 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instance@B <- local_poly(instance)
       instance@P <- compute_weights_precision(instance)
       instances[[length(instances) + 1]] <- instance
-    } else if (model_class == "IID") {
+    } 
+    else if (model_class == "IID") {
       instance <- new(model_class,
         response_var = response_var,
         smoothing_var = smoothing_var, sd.prior = sd.prior, data = data
@@ -135,12 +120,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     }
   }
 
+  fixed_effects_names <- c()
   # For the intercept
-  Xf0 <- matrix(1, nrow = nrow(data), ncol = 1)
-  design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf0
-
-
-  fixed_effects_names <- c("Intercept")
+  if (!family_is_coxph) {
+    Xf0 <- matrix(1, nrow = nrow(data), ncol = 1)
+    design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf0
+    fixed_effects_names <- c(fixed_effects_names, "Intercept")
+  }
   # For fixed effects
   for (fixed_effect in fixed_effects) {
     Xf <- matrix(data[[fixed_effect]], nrow = nrow(data), ncol = 1)
@@ -149,7 +135,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   }
 
   if (missing(control.family)) {
-    control.family <- list(sd_prior = list(prior = "exp", para = list(u = 1, alpha = 0.5)))
+    control.family <- list(sd_prior = list(prior = "exp", param = list(u = 1, alpha = 0.5)))
   }
 
   if (control.family$sd_prior$prior != "exp") {
@@ -163,7 +149,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     }
   }
 
-  result_by_method <- get_result_by_method(instances = instances, design_mat_fixed = design_mat_fixed, family = family, control.family = control.family, control.fixed = control.fixed, fixed_effects = fixed_effects, aghq_k = aghq_k)
+  result_by_method <- get_result_by_method(response_var = response_var, data = data, instances = instances, design_mat_fixed = design_mat_fixed, family = family, control.family = control.family, control.fixed = control.fixed, fixed_effects = fixed_effects, aghq_k = aghq_k, size = size, cens = cens)
   mod <- result_by_method$mod
   w_count <- result_by_method$w_count
 
@@ -212,7 +198,8 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     instances = instances, design_mat_fixed = design_mat_fixed, mod = mod,
     boundary_samp_indexes = global_samp_indexes,
     random_samp_indexes = coef_samp_indexes,
-    fixed_samp_indexes = fixed_samp_indexes
+    fixed_samp_indexes = fixed_samp_indexes,
+    family = family
   )
 
   class(fit_result) <- "FitResult"
@@ -272,9 +259,9 @@ summary.FitResult <- function(object) {
 
   samps <- aghq::sample_marginal(object$mod, M = 3000)
   fixed_samps <- samps$samps[unlist(object$fixed_samp_indexes), , drop = F]
-  fixed_summary <- fixed_samps %>% apply(MARGIN = 1, summary)
+  fixed_summary <- apply(X = fixed_samps,MARGIN = 1, summary)
   colnames(fixed_summary) <- names(object$fixed_samp_indexes)
-  fixed_sd <- fixed_samps %>% apply(MARGIN = 1, sd)
+  fixed_sd <- apply(X = fixed_samps, MARGIN = 1, sd)
   fixed_summary <- rbind(fixed_summary, fixed_sd)
   rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
 
@@ -284,6 +271,9 @@ summary.FitResult <- function(object) {
 
 #' @export
 predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, include.intercept = TRUE) {
+  if(object$family == "Coxph" || object$family == "coxph"){
+    include.intercept = FALSE ## No intercept for coxph model
+  }
   samps <- aghq::sample_marginal(object$mod, M = 3000)
   global_samps <- samps$samps[object$boundary_samp_indexes[[variable]], , drop = F]
   coefsamps <- samps$samps[object$random_samp_indexes[[variable]], ]
@@ -513,14 +503,17 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-get_result_by_method <- function(instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size = NULL) {
-  # Family types: Gaussian - 0, Poisson - 1, Binomial - 2
+get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size, cens) {
+  # Family types: Gaussian - 0, Poisson - 1, Binomial - 2, Coxph - 3
   if (family == "Gaussian") {
     family_type <- 0
   } else if (family == "Poisson") {
     family_type <- 1
   } else if (family == "Binomial") {
     family_type <- 2
+  }
+  else if (family == "Coxph" || family == "coxph") {
+    family_type <- 3
   }
 
   # Containers for random effects
@@ -551,8 +544,8 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     B[[length(B) + 1]] <- dgTMatrix_wrapper(instance@B)
     P[[length(P) + 1]] <- dgTMatrix_wrapper(instance@P)
     logPdet[[length(logPdet) + 1]] <- as.numeric(determinant(instance@P, logarithm = TRUE)$modulus)
-    u[[length(u) + 1]] <- instance@sd.prior$para$u
-    alpha[[length(alpha) + 1]] <- instance@sd.prior$para$alpha
+    u[[length(u) + 1]] <- instance@sd.prior$param$u
+    alpha[[length(alpha) + 1]] <- instance@sd.prior$param$alpha
     w_count <- w_count + ncol(instance@B)
     theta_count <- theta_count + 1
   }
@@ -560,18 +553,28 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
   # For the variance of the Gaussian family
   # From control.family, if applicable
   if (family_type == 0) {
-    u[[length(u) + 1]] <- control.family$sd_prior$para$u
-    alpha[[length(alpha) + 1]] <- control.family$sd_prior$para$alpha
+    u[[length(u) + 1]] <- control.family$sd_prior$param$u
+    alpha[[length(alpha) + 1]] <- control.family$sd_prior$param$alpha
   }
-  for (i in 1:length(design_mat_fixed)) {
-    # For each fixed effects
-    if (i == 1) {
-      beta_fixed_prec[[i]] <- control.fixed$intercept$prec
-    } else {
-      beta_fixed_prec[[i]] <- control.fixed[[fixed_effects[[i - 1]]]]$prec
+  if(family_type == 3){
+    for (i in 1:length(design_mat_fixed)) {
+      # For each fixed effects
+      beta_fixed_prec[[i]] <- control.fixed[[fixed_effects[[i]]]]$prec
+      Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
+      w_count <- w_count + ncol(design_mat_fixed[[i]])
     }
-    Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
-    w_count <- w_count + ncol(design_mat_fixed[[i]])
+  }
+  else{
+    for (i in 1:length(design_mat_fixed)) {
+      # For each fixed effects
+      if (i == 1) {
+        beta_fixed_prec[[i]] <- control.fixed$intercept$prec
+      } else {
+        beta_fixed_prec[[i]] <- control.fixed[[fixed_effects[[i - 1]]]]$prec
+      }
+      Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
+      w_count <- w_count + ncol(design_mat_fixed[[i]])
+    }
   }
 
   tmbdat <- list(
@@ -589,15 +592,33 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     Xf = Xf,
 
     # Response
-    y = (instances[[1]]@data)[[instances[[1]]@response_var]],
+    y = data[[response_var]],
 
     # Family type
     family_type = family_type
   )
 
   # If Family == "Binomial", check whether size is defined in user's input
-  if (family_type == 2 & is.null(size)) {
-    tmbdat$size <- numeric(length = length(tmbdat$y)) + 1 # A vector of 1s being default
+  if (family_type == 2) {
+    if(is.null(data[[size]])){
+      tmbdat$size <- numeric(length = length(tmbdat$y)) + 1 # A vector of 1s being default
+    }
+    else{
+      tmbdat$size <- data[[size]]
+    }
+  }
+  
+  # If Family == "coxph", check whether cens is defined in user's input
+  if (family_type == 3) {
+    tmbdat$ranks = rank(tmbdat$y, ties.method = "min")
+    n <- length(tmbdat$y)
+    tmbdat$D <- cbind(Matrix::Matrix(1,n-1,1),Matrix::Diagonal(n-1,-1))
+    if(is.null(data[[cens]])){
+      tmbdat$cens <- numeric(length = length(tmbdat$y)) + 1 # A vector of 1s being default
+    }
+    else{
+      tmbdat$cens <- data[[cens]]
+    }
   }
 
   tmbparams <- list(
@@ -605,18 +626,32 @@ get_result_by_method <- function(instances, design_mat_fixed, family, control.fa
     theta = c(rep(0, theta_count))
   )
 
-  ff <- TMB::MakeADFun(
-    data = tmbdat,
-    parameters = tmbparams,
-    random = "W",
-    DLL = "OSplines",
-    silent = TRUE
-  )
-
-  # Hessian not implemented for RE models
-  ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
-  mod <- aghq::marginal_laplace_tmb(ff, aghq_k, c(rep(0, theta_count))) # The default value of aghq_k is 4
-
+  if(theta_count == 0){
+    ff <- TMB::MakeADFun(
+      data = tmbdat,
+      parameters = tmbparams,
+      DLL = "OSplines",
+      silent = TRUE
+    )
+    ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
+    
+    opt <- nlminb(start = ff$par, objective = ff$fn, gradient = ff$gr, hessian = ff$he, 
+                  control = list(eval.max = 20000, iter.max = 20000))
+    prec_matrix <- Matrix::forceSymmetric(ff$he(opt$par))
+    mod = list(mean = opt$par, prec = as.matrix(prec_matrix), opt = opt)
+    class(mod) <- "nlminb"
+  }
+  else{
+    ff <- TMB::MakeADFun(
+      data = tmbdat,
+      parameters = tmbparams,
+      random = "W",
+      DLL = "OSplines",
+      silent = TRUE
+    )
+    ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
+    mod <- aghq::marginal_laplace_tmb(ff, aghq_k, c(rep(0, theta_count))) # The default value of aghq_k is 4
+  }
   return(list(mod = mod, w_count = w_count))
 }
 
@@ -742,6 +777,28 @@ global_poly_helper <- function(x, p = 2) {
   }
   result
 }
+
+#' Extract the posterior samples from the fitted model for the target fixed variables.
+#' 
+#' @param model_fit The result from model_fit().
+#' @param variables A vector of names of the target fixed variables to sample.
+#' @param M The number of posterior samples to take.
+#' @export
+sample_fixed_effect <- function(model_fit, variables, M){
+  if(any(class(model_fit$mod) == "aghq")){
+    samps <- aghq::sample_marginal(model_fit$mod, M = M)$samps
+    index <- model_fit$fixed_samp_indexes[variables]
+    selected_samps <- t(samps[unlist(index), ,drop = FALSE])
+    colnames(selected_samps) <- variables
+  }
+  else if(any(class(model_fit$mod) == "nlmb")){
+    samps <- LaplacesDemon::rmvnp(n = M, mu = model_fit$mod$mean, Omega = as.matrix(model_fit$mod$prec))
+    index <- model_fit$fixed_samp_indexes[variables]
+    selected_samps <- samps[,unlist(index)]
+    colnames(selected_samps) <- variables
+  }
+  return(selected_samps)
+} 
 
 
 #' Computing the posterior samples of the function or its derivative using the posterior samples

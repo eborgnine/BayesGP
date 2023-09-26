@@ -13,10 +13,11 @@ LinkingTo: TMB, RcppEigen
 Imports: TMB, RcppEigen
 Depends: 
     R (>= 2.10),
-    tidyverse,
     Matrix,
-    aghq
+    aghq,
+    LaplacesDemon
 Suggests: 
+    tidyverse,
     rmarkdown,
     knitr,
     testthat (>= 3.0.0)
