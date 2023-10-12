@@ -20,7 +20,7 @@
 #' @param control.fixed Parameters used to specify the priors for the fixed effects.
 #' @param cens The name of the right-censoring indicator, should be one of the variables in `data`. The default value is "NULL".
 #' @param M The number of posterior samples to be taken, by default is 3000.
-#' @param customized_template The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `OSpline` will be used.
+#' @param customized_template The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `BayesGP` will be used.
 #' @param option_list A list that controls the details of the inference algorithm, by default is an empty list.
 #' @return A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for
 #' the fixed effects (design_mat_fixed), fitted aghq (mod) and indexes to partition the posterior samples
@@ -824,7 +824,7 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 
 get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size, cens, method, M, customized_template, option_list) {
   if(is.null(customized_template)){
-    cpp = "OSplines"
+    cpp = "BayesGP"
   }
   else{
     cpp = customized_template
@@ -1364,7 +1364,7 @@ get_default_option_list_MCMC <- function(option_list = list()){
 
 #' Roxygen commands
 #'
-#' @useDynLib OSplines
+#' @useDynLib BayesGP
 #'
 dummy <- function() {
   return(NULL)

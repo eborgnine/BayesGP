@@ -1,8 +1,8 @@
 ---
-title: "OSplines: COVID-19 Example"
+title: "BayesGP: COVID-19 Example"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{OSplines: COVID-19 Example}
+  %\VignetteIndexEntry{BayesGP: COVID-19 Example}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -21,14 +21,14 @@ knitr::knit_hooks$set(margins = function(before, options, envir) {
 
 ```{r setup}
 options(warn=-1)
-library(OSplines)
+library(BayesGP)
 ```
 
 # COVID-19 Example
 
 ## Data and Model
 
-We will illustrate the use of O-spline using the `covid_canada` dataset, which contains the daily death count of COVID-19 in Canada.
+We will illustrate the use of BayesGP using the `covid_canada` dataset, which contains the daily death count of COVID-19 in Canada.
 
 ```{r}
 head(covid_canada)
@@ -46,7 +46,7 @@ Here $\xi(t)$ is the standard Gaussian white noise process, or can be viewed as 
 
 ## Inference
 
-To fit the above model using the OSpline package, we simply do the following:
+To fit the above model using the BayesGP package, we simply do the following:
 ```{r warning=FALSE}
 fit_result <- model_fit(new_deaths ~ weekdays1 + weekdays2 + weekdays3 + weekdays4 + weekdays5 + weekdays6 +
                           f(smoothing_var = t, model = "IWP", order = 3, k = 100, sd.prior = list(prior = "exp", para = list(u = 0.02, alpha = 0.5))), 
@@ -137,7 +137,7 @@ if(requireNamespace("INLA", quietly=TRUE)) {
 
 
 
-The inferential result of the function $f$ using R-INLA is comparable to the result using `OSpline`  The inference of derivative, on the other hand, tends to be more wiggly using R-INLA. This difference is due to the lower order IWP used in the model. The highest order IWP that R-INLA accommodates is the second order IWP, which only assumes the function to be once differentiable, whereas the third order IWP used by `OSpline` assumes the function to be twice differentiable.
+The inferential result of the function $f$ using R-INLA is comparable to the result using `BayesGP`  The inference of derivative, on the other hand, tends to be more wiggly using R-INLA. This difference is due to the lower order IWP used in the model. The highest order IWP that R-INLA accommodates is the second order IWP, which only assumes the function to be once differentiable, whereas the third order IWP used by `BayesGP` assumes the function to be twice differentiable.
 
 
 

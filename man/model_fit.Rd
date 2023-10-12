@@ -36,7 +36,9 @@ model_fit(
 
 \item{M}{The number of posterior samples to be taken, by default is 3000.}
 
-\item{customized_template}{The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `OSpline` will be used.}
+\item{customized_template}{The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `BayesGP` will be used.}
+
+\item{option_list}{A list that controls the details of the inference algorithm, by default is an empty list.}
 }
 \value{
 A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for

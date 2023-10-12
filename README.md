@@ -1,54 +1,39 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# OSplines
+# BayesGP
 
 <!-- badges: start -->
 <!-- badges: end -->
 
-The goal of the `OSplines` package is to efficiently implement
+The goal of the `BayesGP` package is to efficiently implement
 model-based smoothing with the integrated Wiener’s process, within a
 variety of Bayesian hierarchical models.
 
 ## Installation
 
-You can install the development version of OSplines from
+You can install the development version of BayesGP from
 [GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("https://github.com/Smoothing-IWP/OSplines/tree/development")
+devtools::install_github("https://github.com/AgueroZZ/BayesGP")
 ```
 
 ## Example
 
-This is a basic example which shows you how to use `OSplines` to fit and
+This is a basic example which shows you how to use `BayesGP` to fit and
 analyze some models, we consider the following data set of COVID-19
 mortality in Canada, which is available in the package:
 
 ``` r
-library(OSplines)
-#> Loading required package: tidyverse
-#> ── Attaching packages ─────────────────────────────────────── tidyverse 1.3.2 ──
-#> ✔ ggplot2 3.4.1      ✔ purrr   0.3.4 
-#> ✔ tibble  3.1.8      ✔ dplyr   1.0.10
-#> ✔ tidyr   1.2.1      ✔ stringr 1.4.1 
-#> ✔ readr   2.1.2      ✔ forcats 0.5.2 
-#> ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
-#> ✖ dplyr::filter() masks stats::filter()
-#> ✖ dplyr::lag()    masks stats::lag()
+library(BayesGP)
 #> Loading required package: Matrix
-#> 
-#> 
-#> Attaching package: 'Matrix'
-#> 
-#> 
-#> The following objects are masked from 'package:tidyr':
-#> 
-#>     expand, pack, unpack
-#> 
-#> 
 #> Loading required package: aghq
+#> Loading required package: LaplacesDemon
+#> Registered S3 method overwritten by 'LaplacesDemon':
+#>   method        from
+#>   print.laplace aghq
 ## basic example code
 head(covid_canada)
 #>         Date new_deaths        t weekdays1 weekdays2 weekdays3 weekdays4
@@ -98,19 +83,17 @@ summary(fit_result)
 #> Here are some moments and quantiles for the log precision: 
 #>               mean        sd     2.5%    median     97.5%
 #> theta(t) -3.271182 0.2785344 -3.87922 -3.268308 -2.760093
-#> Warning: 'Matrix::..2dge' is deprecated.
-#> Use '.dense2g' instead.
-#> See help("Deprecated") and help("Matrix-deprecated").
+#> 
 #> Here are some moments and quantiles for the fixed effects: 
 #> 
 #>               1st Qu.      Median        Mean     3rd Qu.         sd
-#> Intercept -5.83467386 -5.38944536 -5.38103535 -4.93597990 0.66875134
-#> weekdays1  0.08553402  0.09336717  0.09365016  0.10154757 0.01190516
-#> weekdays2  0.07142286  0.07924949  0.07943187  0.08731386 0.01206658
-#> weekdays3  0.11883026  0.12713250  0.12664707  0.13441380 0.01166946
-#> weekdays4  0.11760402  0.12542216  0.12560977  0.13357553 0.01182332
-#> weekdays5  0.04204704  0.05034855  0.05025144  0.05834749 0.01216216
-#> weekdays6 -0.16051122 -0.15166826 -0.15169270 -0.14326187 0.01320432
+#> Intercept -5.85009960 -5.39828827 -5.40444709 -4.96610282 0.66061232
+#> weekdays1  0.08593199  0.09363400  0.09374558  0.10185204 0.01198239
+#> weekdays2  0.07119132  0.07901001  0.07921671  0.08681463 0.01188838
+#> weekdays3  0.11915351  0.12664433  0.12672077  0.13428875 0.01150235
+#> weekdays4  0.11738449  0.12540111  0.12547251  0.13351978 0.01181344
+#> weekdays5  0.04171450  0.05005612  0.05001256  0.05800325 0.01213118
+#> weekdays6 -0.16074510 -0.15130102 -0.15125835 -0.14229662 0.01336132
 ```
 
 We can also see the inferred function $f$:
@@ -127,6 +110,19 @@ or its derivative at `new_data`.
 For the function $f$:
 
 ``` r
+library(tidyverse)
+#> ── Attaching packages ─────────────────────────────────────── tidyverse 1.3.2 ──
+#> ✔ ggplot2 3.4.1      ✔ purrr   0.3.4 
+#> ✔ tibble  3.1.8      ✔ dplyr   1.0.10
+#> ✔ tidyr   1.2.1      ✔ stringr 1.4.1 
+#> ✔ readr   2.1.2      ✔ forcats 0.5.2 
+#> ── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+#> ✖ tidyr::expand()  masks Matrix::expand()
+#> ✖ dplyr::filter()  masks stats::filter()
+#> ✖ dplyr::lag()     masks stats::lag()
+#> ✖ tidyr::pack()    masks Matrix::pack()
+#> ✖ purrr::partial() masks LaplacesDemon::partial()
+#> ✖ tidyr::unpack()  masks Matrix::unpack()
 predict_f <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 617, by = 0.1)))
 predict_f %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
   geom_line(aes(y = plower), lty = "dashed") +

@@ -1,4 +1,4 @@
-Package: OSplines
+Package: BayesGP
 Type: Package
 Title: Constructing O Spline for univariate smoothing
 Version: 0.1.1

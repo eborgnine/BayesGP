@@ -13,29 +13,29 @@ knitr::opts_chunk$set(
 )
 ```
 
-# OSplines
+# BayesGP
 
 <!-- badges: start -->
 <!-- badges: end -->
 
-The goal of the `OSplines` package is to efficiently implement model-based smoothing with the integrated Wiener's process, within a variety of Bayesian hierarchical models.
+The goal of the `BayesGP` package is to efficiently implement model-based smoothing with the integrated Wiener's process, within a variety of Bayesian hierarchical models.
 
 ## Installation
 
-You can install the development version of OSplines from [GitHub](https://github.com/) with:
+You can install the development version of BayesGP from [GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("https://github.com/Smoothing-IWP/OSplines/tree/development")
+devtools::install_github("https://github.com/AgueroZZ/BayesGP")
 ```
 
 ## Example
 
-This is a basic example which shows you how to use `OSplines` to fit and
+This is a basic example which shows you how to use `BayesGP` to fit and
 analyze some models, we consider the following data set of COVID-19 mortality in Canada, which is available in the package:
 
 ```{r example}
-library(OSplines)
+library(BayesGP)
 ## basic example code
 head(covid_canada)
 ```
@@ -62,6 +62,7 @@ We can use the `predict` function to obtain the posterior summary of $f$ or its 
 
 For the function $f$:
 ```{r warning=FALSE}
+library(tidyverse)
 predict_f <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 617, by = 0.1)))
 predict_f %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
   geom_line(aes(y = plower), lty = "dashed") +
