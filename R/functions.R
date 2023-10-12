@@ -18,12 +18,16 @@
 #' @param family The family of response used in the model. By default, the family is set to be "Gaussian".
 #' @param control.family Parameters used to specify the priors for the family parameters, such as the standard deviation parameter of Gaussian family.
 #' @param control.fixed Parameters used to specify the priors for the fixed effects.
+#' @param cens The name of the right-censoring indicator, should be one of the variables in `data`. The default value is "NULL".
+#' @param M The number of posterior samples to be taken, by default is 3000.
+#' @param customized_template The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `OSpline` will be used.
+#' @param option_list A list that controls the details of the inference algorithm, by default is an empty list.
 #' @return A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for
 #' the fixed effects (design_mat_fixed), fitted aghq (mod) and indexes to partition the posterior samples
 #' (boundary_samp_indexes, random_samp_indexes and fixed_samp_indexes).
 #'
 #' @export
-model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4, size = NULL, cens = NULL) {
+model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4, size = NULL, cens = NULL, M = 3000, customized_template = NULL, option_list = list()) {
   # parse the input formula
   parse_result <- parse_formula(formula)
   response_var <- parse_result$response
@@ -82,8 +86,8 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       }
       # If the user does not specify knots, compute knots with
       # the parameter k
+      initialized_smoothing_var <- data[[smoothing_var]] - initial_location
       if (is.null(knots)) {
-        initialized_smoothing_var <- data[[smoothing_var]] - initial_location
         default_k <- 5
         if (is.null(k)) {
           knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = default_k))) # should be length.out
@@ -91,7 +95,6 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
           knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = k)))
         }
       }
-      # refined_x <- seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), by = 1) # this is not correct
       observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
       if (is.null(boundary.prior)) {
         boundary.prior <- list(prec = 0.01)
@@ -114,6 +117,61 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
         smoothing_var = smoothing_var, sd.prior = sd.prior, data = data
       )
       # Case for IID
+      instance@B <- compute_B(instance)
+      instance@P <- compute_P(instance)
+      instances[[length(instances) + 1]] <- instance
+    }
+    else if (model_class == "sGP"){
+      a <- eval(rand_effect$a)
+      k <- eval(rand_effect$k)
+      initial_location <- eval(rand_effect$initial_location)
+      if("m" %in% names(rand_effect)){
+        m <- eval(rand_effect$m)
+      }
+      else{
+        m <- 1
+      }
+      if (!(is.null(k)) && k < 3) {
+        stop("Error: parameter <k> in the random effect part should be >= 3.")
+      }
+      if (a < 0) {
+        stop("Error: Parameter <a> in the random effect part should be positive.")
+      }
+      boundary.prior <- eval(rand_effect$boundary.prior)
+      # If the user does not specify initial_location, compute initial_location with
+      # the min of data[[smoothing_var]]
+      if (is.null(initial_location)) {
+        initial_location <- min(data[[smoothing_var]])
+      }
+      initialized_smoothing_var <- data[[smoothing_var]] - initial_location
+      observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
+      if("region" %in% names(rand_effect)){
+        region <- eval(rand_effect$region)
+      }
+      else{
+        region <- range(observed_x)
+      }
+      if("accuracy" %in% names(rand_effect)){
+        accuracy <- eval(rand_effect$accuracy)
+      }
+      else{
+        accuracy <- 0.01
+      }
+      if (is.null(boundary.prior)) {
+        boundary.prior <- list(prec = 0.01)
+      }
+      boundary <- TRUE
+      if ("boundary" %in% names(rand_effect)){
+        boundary <- eval(rand_effect$boundary)
+      }
+      instance <- new(model_class,
+                      response_var = response_var,
+                      smoothing_var = smoothing_var, a = a, m = m,
+                      k = k, observed_x = observed_x, sd.prior = sd.prior, boundary.prior = boundary.prior, data = data,
+                      region = region, accuracy = accuracy, boundary = boundary)
+      # Case for sGP
+      instance@initial_location <- initial_location
+      instance@X <- global_poly(instance)
       instance@B <- compute_B(instance)
       instance@P <- compute_P(instance)
       instances[[length(instances) + 1]] <- instance
@@ -149,7 +207,10 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     }
   }
 
-  result_by_method <- get_result_by_method(response_var = response_var, data = data, instances = instances, design_mat_fixed = design_mat_fixed, family = family, control.family = control.family, control.fixed = control.fixed, fixed_effects = fixed_effects, aghq_k = aghq_k, size = size, cens = cens)
+  result_by_method <- get_result_by_method(response_var = response_var, data = data, instances = instances, design_mat_fixed = design_mat_fixed, family = family, 
+                                           control.family = control.family, control.fixed = control.fixed, 
+                                           fixed_effects = fixed_effects, aghq_k = aghq_k, size = size, cens = cens,
+                                           method = method, M = M, option_list = option_list, customized_template = customized_template)
   mod <- result_by_method$mod
   w_count <- result_by_method$w_count
 
@@ -163,6 +224,9 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     sum_col_ins <- sum_col_ins + ncol(instance@B)
     rand_effects_names <- c(rand_effects_names, instance@smoothing_var)
     if (class(instance) == "IWP") {
+      global_effects_names <- c(global_effects_names, instance@smoothing_var)
+    }
+    else if (class(instance) == "sGP") {
       global_effects_names <- c(global_effects_names, instance@smoothing_var)
     }
   }
@@ -180,6 +244,11 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
         global_samp_indexes[[length(global_samp_indexes) + 1]] <- (cur_start:cur_end)
       }
     }
+    else if (class(instance) == "sGP") {
+      cur_end <- cur_end + ncol(instance@X)
+      global_samp_indexes[[length(global_samp_indexes) + 1]] <- (cur_start:cur_end)
+    }
+    
     cur_coef_end <- cur_coef_end + ncol(instance@B)
     coef_samp_indexes[[length(coef_samp_indexes) + 1]] <- (cur_coef_start:cur_coef_end)
     cur_start <- cur_end + 1
@@ -201,6 +270,17 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     fixed_samp_indexes = fixed_samp_indexes,
     family = family
   )
+  
+  if(any(class(fit_result$mod) == "aghq")){
+    fit_result$samps <- aghq::sample_marginal(fit_result$mod, M = M)
+  }
+  else if(any(class(fit_result$mod) == "nlminb")){
+    fit_result$samps <- LaplacesDemon::rmvnp(n = M, mu = fit_result$mod$mean, Omega = as.matrix(fit_result$mod$prec))
+  }
+  else if(any(class(fit_result$mod) == "stanfit")){
+    mc_samps <- rstan::extract(fit_result$mod)
+    fit_result$samps <- list(samps = t(mc_samps$W), theta = as.list(data.frame(mc_samps$theta)))
+  }
 
   class(fit_result) <- "FitResult"
 
@@ -231,6 +311,16 @@ setClass("IWP", slots = list(
   B = "matrix", P = "matrix", initial_location = "numeric"
 ))
 
+# Create a class for sGP using S4
+setClass("sGP", slots = list(
+  response_var = "name", smoothing_var = "name", a = "numeric",
+  m = "numeric", k = "numeric",
+  knots = "numeric", observed_x = "numeric", sd.prior = "list",
+  boundary.prior = "list", data = "data.frame", X = "matrix",
+  B = "matrix", P = "matrix", initial_location = "numeric", region = "numeric", 
+  accuracy = "numeric", boundary = "logical"
+))
+
 # Create a class for IID using S4
 setClass("IID", slots = list(
   response_var = "name", smoothing_var = "name", sd.prior = "list",
@@ -239,25 +329,27 @@ setClass("IID", slots = list(
 
 #' @export
 summary.FitResult <- function(object) {
-  aghq_summary <- summary(object$mod)
-  aghq_output <- capture.output(aghq_summary)
-  cur_index <- grep("Here are some moments and quantiles for the transformed parameter:", aghq_output)
-  cat(paste(aghq_output[1:(cur_index - 1)], collapse = "\n"))
-  cat("\nHere are some moments and quantiles for the log precision: \n")
-  cur_index <- grep("median    97.5%", aghq_output)
-  cat(paste(aghq_output[cur_index], collapse = "\n"))
-
-  summary_table <- as.matrix(aghq_summary$summarytable)
-  theta_names <- c()
-  for (instance in object$instances) {
-    theta_names <- c(theta_names, paste("theta(", toString(instance@smoothing_var), ")", sep = ""))
+  if(any(class(object$mod) == "aghq")){
+    aghq_summary <- summary(object$mod)
+    aghq_output <- capture.output(aghq_summary)
+    cur_index <- grep("Here are some moments and quantiles for the transformed parameter:", aghq_output)
+    cat(paste(aghq_output[1:(cur_index - 1)], collapse = "\n"))
+    cat("\nHere are some moments and quantiles for the log precision: \n")
+    cur_index <- grep("median    97.5%", aghq_output)
+    cat(paste(aghq_output[cur_index], collapse = "\n"))
+    
+    summary_table <- as.matrix(aghq_summary$summarytable)
+    theta_names <- c()
+    for (instance in object$instances) {
+      theta_names <- c(theta_names, paste("theta(", toString(instance@smoothing_var), ")", sep = ""))
+    }
+    
+    row.names(summary_table) <- theta_names
+    print(summary_table)
+    cat("\n")
   }
-
-  row.names(summary_table) <- theta_names
-  print(summary_table)
-  cat("\n")
-
-  samps <- aghq::sample_marginal(object$mod, M = 3000)
+  # samps <- aghq::sample_marginal(object$mod, M = 3000)
+  samps <- object$samps
   fixed_samps <- samps$samps[unlist(object$fixed_samp_indexes), , drop = F]
   fixed_summary <- apply(X = fixed_samps,MARGIN = 1, summary)
   colnames(fixed_summary) <- names(object$fixed_samp_indexes)
@@ -269,53 +361,85 @@ summary.FitResult <- function(object) {
   print(t(fixed_summary[c(2:5, 7), ]))
 }
 
+#' To predict the GP component in the fitted model, at the locations specified in `newdata`. 
+#' @param object The fitted object from the function `model_fit`.
+#' @param newdata The dataset that contains the locations to be predicted for the specified GP. Its column names must include `variable`.
+#' @param variable The name of the variable to be predicted, should be in the `newdata`.
+#' @param degree The degree of derivative that the user specifies for inference. Only applicable for a GP in the `IWP` type.
+#' @param include.intercept A logical variable specifying whether the intercept should be accounted when doing the prediction. The default is TRUE. For Coxph model, this 
+#' variable will be forced to FALSE.
+#' @param only.samples A logical variable indicating whether only the posterior samples are required. The default is FALSE, and the summary of posterior samples will be reported.
 #' @export
-predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, include.intercept = TRUE) {
+predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, include.intercept = TRUE, only.samples = FALSE) {
   if(object$family == "Coxph" || object$family == "coxph"){
     include.intercept = FALSE ## No intercept for coxph model
   }
-  samps <- aghq::sample_marginal(object$mod, M = 3000)
-  global_samps <- samps$samps[object$boundary_samp_indexes[[variable]], , drop = F]
-  coefsamps <- samps$samps[object$random_samp_indexes[[variable]], ]
+  # samps <- aghq::sample_marginal(object$mod, M = 3000)
+  samps <- object$samps
   for (instance in object$instances) {
+    if(sum(names(object$random_samp_indexes) == variable) >= 2){
+      stop("There are more than one variables with the name `variable`: please refit the model with different names for them.")
+    }else if(sum(names(object$random_samp_indexes) == variable) == 0){
+      stop("The specified variable cannot be found in the fitted model, please check the name.")
+    }
+    global_samps <- samps$samps[object$boundary_samp_indexes[[variable]], , drop = F]
+    coefsamps <- samps$samps[object$random_samp_indexes[[variable]], ]
     if (instance@smoothing_var == variable && class(instance) == "IWP") {
       IWP <- instance
-      break
+      ## Step 2: Initialization
+      if (is.null(newdata)) {
+        refined_x_final <- IWP@observed_x
+      } else {
+        refined_x_final <- sort(newdata[[variable]] - IWP@initial_location) # initialize according to `initial_location`
+      }
+      if(include.intercept){
+        intercept_samps <- samps$samps[object$fixed_samp_indexes[["Intercept"]], , drop = F]
+      } else{
+        intercept_samps <- NULL
+      }
+      ## Step 3: apply `compute_post_fun_IWP` to samps
+      f <- compute_post_fun_IWP(
+        samps = coefsamps, global_samps = global_samps,
+        knots = IWP@knots,
+        refined_x = refined_x_final,
+        p = IWP@order, ## check this order or p?
+        degree = degree,
+        intercept_samps = intercept_samps
+      )
+      f[,1] <- f[,1] + IWP@initial_location
     }
-    # else if (instance@smoothing_var == variable && class(instance) == "IID"){
-    #   IID <- instance
-    # }
+    else if (instance@smoothing_var == variable && class(instance) == "sGP") {
+      sGP <- instance
+      ## Step 2: Initialization
+      if (is.null(newdata)) {
+        refined_x_final <- sGP@observed_x
+      } else {
+        refined_x_final <- sort(newdata[[variable]] - sGP@initial_location) # initialize according to `initial_location`
+      }
+      if(include.intercept){
+        intercept_samps <- samps$samps[object$fixed_samp_indexes[["Intercept"]], , drop = F]
+      } else{
+        intercept_samps <- NULL
+      }
+      ## Step 3: apply `compute_post_fun_sGP` to samps
+      f <- compute_post_fun_sGP(
+        samps = coefsamps, global_samps = global_samps,
+        k = sGP@k,
+        refined_x = refined_x_final,
+        a = sGP@a, 
+        m = sGP@m,
+        region = sGP@region,
+        intercept_samps = intercept_samps,
+        boundary = sGP@boundary
+      )
+      f[,1] <- f[,1] + sGP@initial_location
+    }
   }
-  # IWP <- object$instances[[variable]]
-
-  ## Step 2: Initialization
-  if (is.null(newdata)) {
-    refined_x_final <- IWP@observed_x
-  } else {
-    refined_x_final <- sort(newdata[[variable]] - IWP@initial_location) # initialize according to `initial_location`
+  if(only.samples){
+    return(f)
   }
-  
-  if(include.intercept){
-    intercept_samps <- samps$samps[object$fixed_samp_indexes[["Intercept"]], , drop = F]
-  } else{
-    intercept_samps <- NULL
-  }
-  
-
-  ## Step 3: apply `compute_post_fun` to samps
-  f <- compute_post_fun(
-    samps = coefsamps, global_samps = global_samps,
-    knots = IWP@knots,
-    refined_x = refined_x_final,
-    p = IWP@order, ## check this order or p?
-    degree = degree,
-    intercept_samps = intercept_samps
-  )
-
   ## Step 4: summarize the prediction
   fpos <- extract_mean_interval_given_samps(f)
-  fpos$x <- refined_x_final + IWP@initial_location
-
   return(fpos)
 }
 
@@ -331,10 +455,157 @@ plot.FitResult <- function(object) {
         ylab = "effect", xlab = as.character(instance@smoothing_var)
       )
     }
+    if (class(instance) == "sGP") {
+      predict_result <- predict(object, variable = as.character(instance@smoothing_var))
+      matplot(
+        x = predict_result$x, y = predict_result[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1),
+        col = "black", type = "l",
+        ylab = "effect", xlab = as.character(instance@smoothing_var)
+      )
+    }
   }
 
   ### Step 2: then plot the original aghq object
   # plot(object$mod)
+}
+
+Compute_Q_sB <- function(a,k,region, accuracy = 0.01, boundary = TRUE){
+  ss <- function(M) {Matrix::forceSymmetric(M + Matrix::t(M))}
+  x <- seq(min(region),max(region),by = accuracy)
+  if(boundary == TRUE){
+    B_basis <- suppressWarnings(fda::create.bspline.basis(rangeval = c(min(region),max(region)),
+                                                          nbasis = k,
+                                                          norder = 4,
+                                                          dropind = c(1,2)))
+  }
+  else{
+    B_basis <- suppressWarnings(fda::create.bspline.basis(rangeval = c(min(region),max(region)),
+                                                          nbasis = k,
+                                                          norder = 4))
+  }
+  Bmatrix <- fda::eval.basis(x, B_basis, Lfdobj=0, returnMatrix=TRUE)
+  B1matrix <-  fda::eval.basis(x, B_basis, Lfdobj=1, returnMatrix=TRUE)
+  B2matrix <-  fda::eval.basis(x, B_basis, Lfdobj=2, returnMatrix=TRUE)
+  cos_matrix <- cos(a*x)
+  sin_matrix <- sin(a*x)
+  Bcos <- as(apply(Bmatrix, 2, function(x) x*cos_matrix), "dgCMatrix")
+  B1cos <- as(apply(B1matrix, 2, function(x) x*cos_matrix), "dgCMatrix")
+  B2cos <- as(apply(B2matrix, 2, function(x) x*cos_matrix), "dgCMatrix")
+  Bsin <- as(apply(Bmatrix, 2, function(x) x*sin_matrix), "dgCMatrix")
+  B1sin <- as(apply(B1matrix, 2, function(x) x*sin_matrix), "dgCMatrix")
+  B2sin <- as(apply(B2matrix, 2, function(x) x*sin_matrix), "dgCMatrix")
+  
+  ### Compute I, L, T:
+  Numerical_I <- as(diag(c(diff(c(0,x)))), "dgCMatrix")
+  
+  ### T
+  T00 <- Matrix::t(Bcos) %*% Numerical_I %*% Bcos
+  T10 <- Matrix::t(B1cos) %*% Numerical_I %*% Bcos
+  T11 <- Matrix::t(B1cos) %*% Numerical_I %*% B1cos
+  T20 <- Matrix::t(B2cos) %*% Numerical_I %*% Bcos
+  T21 <- Matrix::t(B2cos) %*% Numerical_I %*% B1cos
+  T22 <- Matrix::t(B2cos) %*% Numerical_I %*% B2cos
+  
+  ### L
+  L00 <- Matrix::t(Bsin) %*% Numerical_I %*% Bsin
+  L10 <- Matrix::t(B1sin) %*% Numerical_I %*% Bsin
+  L11 <- Matrix::t(B1sin) %*% Numerical_I %*% B1sin
+  L20 <- Matrix::t(B2sin) %*% Numerical_I %*% Bsin
+  L21 <- Matrix::t(B2sin) %*% Numerical_I %*% B1sin
+  L22 <- Matrix::t(B2sin) %*% Numerical_I %*% B2sin
+  
+  ### I
+  I00 <- Matrix::t(Bsin) %*% Numerical_I %*% Bcos
+  I10 <- Matrix::t(B1sin) %*% Numerical_I %*% Bcos
+  I11 <- Matrix::t(B1sin) %*% Numerical_I %*% B1cos
+  I20 <- Matrix::t(B2sin) %*% Numerical_I %*% Bcos
+  I21 <- Matrix::t(B2sin) %*% Numerical_I %*% B1cos
+  I22 <- Matrix::t(B2sin) %*% Numerical_I %*% B2cos
+  
+  
+  ### Inner product involving B spline:
+  Bmatrix <- as(Bmatrix, "dgCMatrix")
+  B1matrix <- as(B1matrix, "dgCMatrix")
+  B2matrix <- as(B2matrix, "dgCMatrix")
+  
+  BB <- Matrix::t(Bmatrix) %*% Numerical_I %*% Bmatrix
+  B2B2 <- Matrix::t(B2matrix) %*% Numerical_I %*% B2matrix
+  BB2 <- Matrix::t(Bmatrix) %*% Numerical_I %*% B2matrix
+  BS <- Matrix::t(Bmatrix) %*% Numerical_I %*% Bsin
+  BC <- Matrix::t(Bmatrix) %*% Numerical_I %*% Bcos
+  BS1 <- Matrix::t(Bmatrix) %*% Numerical_I %*% B1sin
+  BC1 <- Matrix::t(Bmatrix) %*% Numerical_I %*% B1cos
+  BS2 <- Matrix::t(Bmatrix) %*% Numerical_I %*% B2sin
+  BC2 <- Matrix::t(Bmatrix) %*% Numerical_I %*% B2cos
+  B2S <- Matrix::t(B2matrix) %*% Numerical_I %*% Bsin
+  B2C <- Matrix::t(B2matrix) %*% Numerical_I %*% Bcos
+  B2S1 <- Matrix::t(B2matrix) %*% Numerical_I %*% B1sin
+  B2C1 <- Matrix::t(B2matrix) %*% Numerical_I %*% B1cos
+  B2S2 <- Matrix::t(B2matrix) %*% Numerical_I %*% B2sin
+  B2C2 <- Matrix::t(B2matrix) %*% Numerical_I %*% B2cos
+  
+  ## G = <phi,phj>
+  G <- rbind(cbind(T00, Matrix::t(I00), Matrix::t(BC)), cbind(I00,L00, Matrix::t(BS)), cbind(BC,BS,BB))
+  
+  ## C = <D^2phi,D^2phj>
+  C11 <- T22 - 2*a*ss(I21) - (a^2)*ss(T20) + 2*(a^3)*ss(I10) + 4 * (a^2) * L11 + (a^4)*T00
+  C22 <- L22 + 2*a*ss(I21) - (a^2)*ss(L20) - 2*(a^3)*ss(I10) + 4 * (a^2) * T11 + (a^4)*L00
+  C12 <- I22 + 2*a*T21 - (a^2)* ss(I20) - 2*a*Matrix::t(L21) - 4*(a^2)*I11 + 2*(a^3)*L10 - 2*(a^3)*Matrix::t(T10) + (a^4)*I00
+  
+  C13 <- Matrix::t(B2C2) - 2*a*Matrix::t(B2S1) - (a^2)*Matrix::t(B2C)
+  C23 <- Matrix::t(B2S2) + 2*a*Matrix::t(B2C1) - (a^2)*Matrix::t(B2S)
+  C33 <- B2B2
+  C <- rbind(cbind(C11,C12,C13), cbind(Matrix::t(C12), C22, C23), cbind(Matrix::t(C13), Matrix::t(C23), C33))
+  
+  
+  ## M = <phi,D^2phj>
+  M11 <- Matrix::t(T20) - (2*a)*Matrix::t(I10) - (a^2)*T00
+  M12 <- Matrix::t(I20) + (2*a)*Matrix::t(T10) - (a^2)*I00
+  M21 <- Matrix::t(I20) - (2*a)*Matrix::t(L10) - (a^2)*I00
+  M22 <- Matrix::t(L20) + (2*a)*Matrix::t(I10) - (a^2)*L00
+  
+  M13 <- Matrix::t(B2C)
+  M23 <- Matrix::t(B2S)
+  M31 <- BC2 - (2*a)*BS1 - (a^2)*BC
+  M32 <- BS2 + (2*a)*BC1 - (a^2)*BS
+  M33 <- BB2
+  
+  M <- rbind(cbind(M11,M12,M13), cbind(M21,M22,M23), cbind(M31,M32,M33))
+  
+  
+  ### Compute the final precision matrix: Q
+  Q <- (a^4)*G + C + (a^2)*ss(M)
+  Matrix::forceSymmetric(Q)
+}
+Compute_B_sB <- function(x, a, k, region, boundary = TRUE){
+  if(boundary){
+    B_basis <- suppressWarnings(fda::create.bspline.basis(rangeval = c(min(region),max(region)),
+                                                          nbasis = k,
+                                                          norder = 4,
+                                                          dropind = c(1,2)))
+  }
+  else{
+    B_basis <- suppressWarnings(fda::create.bspline.basis(rangeval = c(min(region),max(region)),
+                                                          nbasis = k,
+                                                          norder = 4))
+  }
+  Bmatrix <- fda::eval.basis(x, B_basis, Lfdobj=0, returnMatrix=TRUE)
+  cos_matrix <- cos(a*x)
+  sin_matrix <- sin(a*x)
+  Bcos <- apply(Bmatrix, 2, function(x) x*cos_matrix)
+  Bsin <- apply(Bmatrix, 2, function(x) x*sin_matrix)
+  cbind(Bcos, Bsin,Bmatrix)
+}
+Compute_B_sB_helper <- function(refined_x, a, k, m, region, boundary = TRUE, initial_location = NULL){
+  if(is.null(initial_location)){
+    initial_location <- min(refined_x)
+  }
+  refined_x <- refined_x - initial_location
+  B <- NULL
+  for (i in 1:m) {
+    B <- cbind(B, Compute_B_sB(x = refined_x, a = (i*a), region = region, k = k, boundary = boundary))
+  }
+  B
 }
 
 setGeneric("compute_B", function(object) {
@@ -346,6 +617,23 @@ setMethod("compute_B", signature = "IID", function(object) {
   B <- model.matrix(~ -1 + x)
   B
 })
+setMethod("compute_B", signature = "sGP", function(object) {
+  smoothing_var <- object@smoothing_var
+  a <- object@a
+  k <- object@k
+  m <- object@m
+  region <- object@region
+  accuracy <- object@accuracy
+  boundary <- object@boundary
+  initial_location <- object@initial_location
+  refined_x <- (object@data)[[smoothing_var]] - initial_location
+  B <- NULL
+  for (i in 1:m) {
+    B <- cbind(B, Compute_B_sB(x = refined_x, a = (i*a), region = region, k = k))
+  }
+  B
+})
+
 
 setGeneric("compute_P", function(object) {
   standardGeneric("compute_P")
@@ -356,6 +644,25 @@ setMethod("compute_P", signature = "IID", function(object) {
   num_factor <- length(unique(x))
   diag(nrow = num_factor, ncol = num_factor)
 })
+setMethod("compute_P", signature = "sGP", function(object) {
+  smoothing_var <- object@smoothing_var
+  a <- object@a
+  k <- object@k
+  m <- object@m
+  region <- object@region
+  accuracy <- object@accuracy
+  boundary <- object@boundary
+  initial_location <- object@initial_location
+  refined_x <- (object@data)[[smoothing_var]] - initial_location
+  Q <- Compute_Q_sB(a = a, k = k, region = region, accuracy = accuracy)
+  if(m >= 2){
+    for (i in 2:m) {
+      Q <- bdiag(Q, Compute_Q_sB(a = (i*a), k = k, region = region, accuracy = accuracy))
+    }
+  }
+  as(Q, "matrix")
+})
+
 
 setGeneric("local_poly", function(object) {
   standardGeneric("local_poly")
@@ -469,6 +776,18 @@ setMethod("global_poly", signature = "IWP", function(object) {
   }
   result
 })
+setMethod("global_poly", signature = "sGP", function(object) {
+  smoothing_var <- object@smoothing_var
+  a <- object@a
+  m <- object@m
+  initial_location <- object@initial_location
+  refined_x <- (object@data)[[smoothing_var]] - initial_location
+  X <- NULL
+  for (i in 1:m) {
+    X <- cbind(X, cos(i*a*refined_x),sin(i*a*refined_x))
+  }
+  X 
+})
 
 
 #' Constructing the precision matrix given the knot sequence
@@ -503,7 +822,13 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 })
 
 
-get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size, cens) {
+get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size, cens, method, M, customized_template, option_list) {
+  if(is.null(customized_template)){
+    cpp = "OSplines"
+  }
+  else{
+    cpp = customized_template
+  }
   # Family types: Gaussian - 0, Poisson - 1, Binomial - 2, Coxph - 3
   if (family == "Gaussian") {
     family_type <- 0
@@ -511,9 +836,13 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     family_type <- 1
   } else if (family == "Binomial") {
     family_type <- 2
-  }
-  else if (family == "Coxph" || family == "coxph") {
+  } else if (family == "Coxph" || family == "coxph") {
     family_type <- 3
+  } else if(family == "Customized"){
+    if(is.null(customized_template)){
+      stop("In order to use the customized family: please input the name of the complied cpp template as `customized_template`.")
+    }
+    family_type <- -1
   }
 
   # Containers for random effects
@@ -537,6 +866,11 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
   for (instance in instances) {
     # For each random effects
     if (class(instance) == "IWP") {
+      X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
+      betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
+      w_count <- w_count + ncol(instance@X)
+    }
+    else if(class(instance) == "sGP"){
       X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
       betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
       w_count <- w_count + ncol(instance@X)
@@ -625,12 +959,15 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     W = c(rep(0, w_count)), # recall W is everything in the model (RE or FE)
     theta = c(rep(0, theta_count))
   )
+  if(theta_count == 0 & method == "aghq"){
+    stop("For model with no hyper-parameter, the method cannot be aghq.")
+  }
 
-  if(theta_count == 0){
+  if(method == "nlminb"){
     ff <- TMB::MakeADFun(
       data = tmbdat,
       parameters = tmbparams,
-      DLL = "OSplines",
+      DLL = cpp,
       silent = TRUE
     )
     ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
@@ -639,18 +976,37 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
                   control = list(eval.max = 20000, iter.max = 20000))
     prec_matrix <- Matrix::forceSymmetric(ff$he(opt$par))
     mod = list(mean = opt$par, prec = as.matrix(prec_matrix), opt = opt)
-    class(mod) <- "nlminb"
+    class(mod) <- method
   }
-  else{
+  else if(method == "aghq"){
     ff <- TMB::MakeADFun(
       data = tmbdat,
       parameters = tmbparams,
       random = "W",
-      DLL = "OSplines",
+      DLL = cpp,
       silent = TRUE
     )
     ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
     mod <- aghq::marginal_laplace_tmb(ff, aghq_k, c(rep(0, theta_count))) # The default value of aghq_k is 4
+  }
+  else if(method == "MCMC"){
+    ff <- TMB::MakeADFun(
+      data = tmbdat,
+      parameters = tmbparams,
+      random = "W",
+      DLL = cpp,
+      silent = TRUE
+    )
+    ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
+    default_option_list <- get_default_option_list_MCMC(option_list = option_list)
+    mod <- tmbstan::tmbstan(
+      ff,
+      chains = default_option_list$chains,
+      cores = default_option_list$cores,
+      iter = default_option_list$warmup + M,
+      warmup = default_option_list$warmup,
+      seed = default_option_list$seed
+    )
   }
   return(list(mod = mod, w_count = w_count))
 }
@@ -778,31 +1134,43 @@ global_poly_helper <- function(x, p = 2) {
   result
 }
 
+#' Constructing and evaluating the global polynomials, to account for boundary conditions (design matrix) of sGP
+#'
+#' @param refined_x A vector of locations to evaluate the sB basis
+#' @param a The frequency of sGP.
+#' @param m The number of harmonics to consider
+#' @return A matrix with i,j componet being the value of jth basis function
+#' value at ith element of x, the ncol should equal to (2*m), and nrow
+#' should equal to the number of elements in x
+#' @export
+global_poly_helper_sGP <- function(refined_x, a, m, initial_location = NULL) {
+  if(is.null(initial_location)){
+    initial_location <- min(refined_x)
+  }
+  refined_x <- refined_x - initial_location
+  X <- NULL
+  for (i in 1:m) {
+    X <- cbind(X, cos(i*a*refined_x),sin(i*a*refined_x))
+  }
+  X 
+}
+
 #' Extract the posterior samples from the fitted model for the target fixed variables.
 #' 
 #' @param model_fit The result from model_fit().
 #' @param variables A vector of names of the target fixed variables to sample.
-#' @param M The number of posterior samples to take.
 #' @export
 sample_fixed_effect <- function(model_fit, variables, M){
-  if(any(class(model_fit$mod) == "aghq")){
-    samps <- aghq::sample_marginal(model_fit$mod, M = M)$samps
-    index <- model_fit$fixed_samp_indexes[variables]
-    selected_samps <- t(samps[unlist(index), ,drop = FALSE])
-    colnames(selected_samps) <- variables
-  }
-  else if(any(class(model_fit$mod) == "nlmb")){
-    samps <- LaplacesDemon::rmvnp(n = M, mu = model_fit$mod$mean, Omega = as.matrix(model_fit$mod$prec))
-    index <- model_fit$fixed_samp_indexes[variables]
-    selected_samps <- samps[,unlist(index)]
-    colnames(selected_samps) <- variables
-  }
+  samps <- model_fit$samps$samps
+  index <- model_fit$fixed_samp_indexes[variables]
+  selected_samps <- t(samps[unlist(index), ,drop = FALSE])
+  colnames(selected_samps) <- variables
   return(selected_samps)
 } 
 
 
 #' Computing the posterior samples of the function or its derivative using the posterior samples
-#' of the basis coefficients
+#' of the basis coefficients for IWP
 #'
 #' @param samps A matrix that consists of posterior samples for the O-spline basis coefficients. Each column
 #' represents a particular sample of coefficients, and each row is associated with one basis function. This can
@@ -821,19 +1189,19 @@ sample_fixed_effect <- function(model_fit, variables, M){
 #' @examples
 #' knots <- c(0, 0.2, 0.4, 0.6)
 #' samps <- matrix(rnorm(n = (3 * 10)), ncol = 10)
-#' result <- compute_post_fun(samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
+#' result <- compute_post_fun_IWP(samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
 #' plot(result[, 2] ~ result$x, type = "l", ylim = c(-0.3, 0.3))
 #' for (i in 1:9) {
 #'   lines(result[, (i + 1)] ~ result$x, lty = "dashed", ylim = c(-0.1, 0.1))
 #' }
 #' global_samps <- matrix(rnorm(n = (2 * 10), sd = 0.1), ncol = 10)
-#' result <- compute_post_fun(global_samps = global_samps, samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
+#' result <- compute_post_fun_IWP(global_samps = global_samps, samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
 #' plot(result[, 2] ~ result$x, type = "l", ylim = c(-0.3, 0.3))
 #' for (i in 1:9) {
 #'   lines(result[, (i + 1)] ~ result$x, lty = "dashed", ylim = c(-0.1, 0.1))
 #' }
 #' @export
-compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, degree = 0, intercept_samps = NULL) {
+compute_post_fun_IWP <- function(samps, global_samps = NULL, knots, refined_x, p, degree = 0, intercept_samps = NULL) {
   if (p <= degree) {
     return(message("Error: The degree of derivative to compute is not defined. Should consider higher order smoothing model or lower order of the derivative degree."))
   }
@@ -862,9 +1230,9 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
   ## Design matrix for the spline basis weights
   B <- dgTMatrix_wrapper(local_poly_helper(knots, refined_x = refined_x, p = (p - degree)))
 
-  if ((p - degree) > 1) {
+  if ((p - degree) >= 1) {
     X <- global_poly_helper(refined_x, p = p)
-    X <- as.matrix(X[, 1:(p - degree)])
+    X <- as.matrix(X[, 1:(p - degree), drop = FALSE])
     for (i in 1:ncol(X)) {
       X[, i] <- (factorial(i + degree - 1) / factorial(i - 1)) * X[, i]
     }
@@ -877,10 +1245,49 @@ compute_post_fun <- function(samps, global_samps = NULL, knots, refined_x, p, de
 }
 
 
+
+#' Computing the posterior samples of the function using the posterior samples
+#' of the basis coefficients for sGP
+#'
+#' @param samps A matrix that consists of posterior samples for the O-spline basis coefficients. Each column
+#' represents a particular sample of coefficients, and each row is associated with one basis function. This can
+#' be extracted using `sample_marginal` function from `aghq` package.
+#' @param global_samps A matrix that consists of posterior samples for the global basis coefficients. If NULL,
+#' assume there will be no global polynomials and the boundary conditions are exactly zero.
+#' @param k The number of the sB basis.
+#' @param region The region to define the sB basis
+#' @param refined_x A vector of locations to evaluate the sB basis
+#' @param a The frequency of sGP.
+#' @param m The number of harmonics to consider
+#' @return A data.frame that contains different samples of the function, with the first column
+#' being the locations of evaluations x = refined_x.
+#' @export
+compute_post_fun_sGP <- function(samps, global_samps = NULL, k, refined_x, a, region, boundary = TRUE, m, intercept_samps = NULL) {
+  ## Design matrix for the spline basis weights
+  B <- dgTMatrix_wrapper(Compute_B_sB_helper(refined_x = refined_x, k = k, a = a, region = region, boundary = boundary, initial_location = NULL, m = m))
+  X <- cbind(1,global_poly_helper_sGP(refined_x = refined_x, a = a, m = m))
+  if (is.null(intercept_samps)) {
+    intercept_samps <- matrix(0, nrow = 1, ncol = ncol(samps))
+  }
+  if(is.null(global_samps)){
+    global_samps <- matrix(0, nrow = (2*m), ncol = ncol(samps))
+  }
+  global_samps <- rbind(intercept_samps, global_samps)
+  f_samps <- X %*% global_samps + B %*% samps
+
+  result <- cbind(x = refined_x, data.frame(as.matrix(f_samps)))
+  result
+}
+
+
+
+
+
+
 #' Construct posterior inference given samples
 #'
 #' @param samps Posterior samples of f or its derivative, with the first column being evaluation
-#' points x. This can be yielded by `compute_post_fun` function.
+#' points x. This can be yielded by `compute_post_fun_IWP` function.
 #' @param level The level to compute the pointwise interval.
 #' @return A dataframe with a column for evaluation locations x, and posterior mean and pointwise
 #' intervals at that set of locations.
@@ -897,23 +1304,60 @@ extract_mean_interval_given_samps <- function(samps, level = 0.95) {
 }
 
 
-#' Construct prior based on d-step prediction SD.
+#' Construct prior based on d-step prediction SD (for IWP)
 #'
 #' @param prior A list that contains a and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.
 #' @param d A numeric value for the prediction step.
 #' @param p An integer for the order of IWP.
 #' @return A list that contains a and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
 #' @export
-prior_conversion <- function(d, prior, p) {
+prior_conversion_IWP <- function(d, prior, p) {
   Cp <- (d^((2 * p) - 1)) / (((2 * p) - 1) * (factorial(p - 1)^2))
   prior_q <- list(a = prior$a, u = (prior$u * (1 / sqrt(Cp))))
   prior_q
 }
 
 
+#' Compute the SD correction factor for sGP
+#' @param d A numeric value for the prediction step.
+#' @param a The frequency parameter of the sGP.
+#' @return The correction factor c that should be used to compute the d-step PSD as c*SD.
+compute_d_step_sGPsd <- function(d,a){
+  sqrt((1/(a^2))*((d/2) - (sin(2*a*d)/(4*a))))
+}
+
+#' Construct prior based on d-step prediction SD (for sGP)
+#'
+#' @param prior A list that contains a and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.
+#' @param d A numeric value for the prediction step.
+#' @param a The frequency parameter of the sGP.
+#' @param m The number of harmonics that should be considered, by default m = 1 represents only the sGP.
+#' @return A list that contains a and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
+#' @export
+prior_conversion_sGP <- function(d, prior, a, m = 1) {
+  correction_factor <- 0
+  for (i in 1:m) {
+    correction_factor <- correction_factor + compute_d_step_sGPsd(d = d, a = (i*a))
+  }
+  prior_SD <- list(u = prior$u/correction_factor, a = prior$a)
+  prior_SD
+}
+
+
 dgTMatrix_wrapper <- function(matrix) {
   result <- as(as(as(matrix, "dMatrix"), "generalMatrix"), "TsparseMatrix")
   result
+}
+
+get_default_option_list_MCMC <- function(option_list = list()){
+  default_options <- list(chains = 1, cores = 1, init = "random", seed = 123, warmup = 10000)
+  required_names <- names(default_options)
+  for (name in required_names) {
+    if(! name %in% names(option_list)){
+      option_list[[name]] <- default_options[[name]]
+    }
+  }
+  option_list
 }
 
 

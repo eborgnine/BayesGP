@@ -13,7 +13,10 @@ model_fit(
   control.fixed,
   aghq_k = 4,
   size = NULL,
-  cens = NULL
+  cens = NULL,
+  M = 3000,
+  customized_template = NULL,
+  option_list = list()
 )
 }
 \arguments{
@@ -28,6 +31,12 @@ model_fit(
 \item{control.family}{Parameters used to specify the priors for the family parameters, such as the standard deviation parameter of Gaussian family.}
 
 \item{control.fixed}{Parameters used to specify the priors for the fixed effects.}
+
+\item{cens}{The name of the right-censoring indicator, should be one of the variables in `data`. The default value is "NULL".}
+
+\item{M}{The number of posterior samples to be taken, by default is 3000.}
+
+\item{customized_template}{The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `OSpline` will be used.}
 }
 \value{
 A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for

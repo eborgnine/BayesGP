@@ -10,8 +10,6 @@ sample_fixed_effect(model_fit, variables, M)
 \item{model_fit}{The result from model_fit().}
 
 \item{variables}{A vector of names of the target fixed variables to sample.}
-
-\item{M}{The number of posterior samples to take.}
 }
 \description{
 Extract the posterior samples from the fitted model for the target fixed variables.

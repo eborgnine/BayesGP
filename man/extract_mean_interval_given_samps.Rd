@@ -8,7 +8,7 @@ extract_mean_interval_given_samps(samps, level = 0.95)
 }
 \arguments{
 \item{samps}{Posterior samples of f or its derivative, with the first column being evaluation
-points x. This can be yielded by `compute_post_fun` function.}
+points x. This can be yielded by `compute_post_fun_IWP` function.}
 
 \item{level}{The level to compute the pointwise interval.}
 }
