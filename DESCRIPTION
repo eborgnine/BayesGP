@@ -1,10 +1,10 @@
 Package: BayesGP
 Type: Package
-Title: Constructing O Spline for univariate smoothing
+Title: Efficient implementation of Gaussian process in Bayesian hierarchical models.
 Version: 0.1.1
 Authors: Ziang Zhang, Yongwei Lin
 Maintainer: <aguero.zhang@mail.utoronto.ca>, <yongwei.lin@mail.utoronto.ca>
-Description: To construct O-spline function that approximates the univariate smoothing with Integrated Wiener's process, at different smoothness order.
+Description: R package that implements a variety of Bayesian hierarchical model with flexible Gaussian processes prior
 License: file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -13,11 +13,10 @@ LinkingTo: TMB, RcppEigen
 Imports: TMB, RcppEigen
 Depends: 
     R (>= 2.10),
-    Matrix,
-    aghq,
-    LaplacesDemon
-Suggests: 
     tidyverse,
+    Matrix,
+    aghq
+Suggests: 
     rmarkdown,
     knitr,
     testthat (>= 3.0.0)
