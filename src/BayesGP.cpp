@@ -46,7 +46,7 @@ Type objective_function<Type>::operator() ()
   DATA_STRUCT(Xf, list_SparseMatrix_from_R);
 
   DATA_VECTOR(y); //response variable
-  DATA_SCALAR(family_type); // Family types: Gaussian - 0, Poisson - 1, Binomial - 2
+  DATA_SCALAR(family_type); // Family types: Gaussian - 0, Poisson - 1, Binomial - 2, Coxph - 3, Case-Crossover - 4
 
   vector<int> betadim(X.size());
   int sum_betadim = 0;
@@ -127,9 +127,9 @@ Type objective_function<Type>::operator() ()
   PARAMETER_VECTOR(theta);
 
   // Transformations
-  vector<Type> eta = Xf(0) * beta_fixed(0); // adding intercept
+  vector<Type> eta(y.size());
 
-  for (int i = 1; i < Xf.size(); i++){
+  for (int i = 0; i < Xf.size(); i++){
     eta += Xf(i) * beta_fixed(i); // adding each fixed effect
   }
 
@@ -151,7 +151,8 @@ Type objective_function<Type>::operator() ()
 
   // Log likelihood
   Type ll = 0;
-  // Family types: Gaussian - 0, Poisson - 1, Binomial - 2
+  // Family types: Gaussian - 0, Poisson - 1, Binomial - 2,
+  // CoxPH - 3, Case-crossover - 4
   if (family_type == 0){
     ll = sum(dnorm(y, eta, sigma(theta.size() - 1), TRUE));
   } 
@@ -188,6 +189,23 @@ Type objective_function<Type>::operator() ()
       ll += -cens(i) * log(diffvec.sum());
   }
   } 
+
+  else if (family_type == 4){
+    DATA_VECTOR(count);
+    DATA_IVECTOR(case_day);
+    DATA_IMATRIX(control_days);
+    int n_case_day = case_day.size();
+    int n_control_days = control_days.row(0).size();
+    for (int i = 0;i<n_case_day;i++) {
+      Type log_hazard_ratio_sum = 0;
+      for(int j = 0;j<n_control_days;j++) {
+        if(control_days(i,j) == 0) continue;
+        log_hazard_ratio_sum = logspace_add(log_hazard_ratio_sum, eta(control_days(i,j) - 1) - eta(case_day(i) - 1));
+        }
+        ll -= count(i) * log_hazard_ratio_sum;
+        }
+}
+
   REPORT(ll);
 
   // Log prior on W

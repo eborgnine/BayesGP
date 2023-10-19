@@ -136,7 +136,6 @@ if(requireNamespace("INLA", quietly=TRUE)) {
 ```
 
 
-
 The inferential result of the function $f$ using R-INLA is comparable to the result using `BayesGP`  The inference of derivative, on the other hand, tends to be more wiggly using R-INLA. This difference is due to the lower order IWP used in the model. The highest order IWP that R-INLA accommodates is the second order IWP, which only assumes the function to be once differentiable, whereas the third order IWP used by `BayesGP` assumes the function to be twice differentiable.
 
 
