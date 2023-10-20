@@ -266,12 +266,15 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
 #' @param M The number of posterior samples to be taken, by default is 3000.
 #' @param customized_template The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `BayesGP` will be used.
 #' @param option_list A list that controls the details of the inference algorithm, by default is an empty list.
+#' @param envir The environment in which the formula and other expressions are to be evaluated. 
+#'   Defaults to `parent.frame()`, which refers to the environment from which the function was called.
+#'   This allows the function to access variables that are defined in the calling function's scope.
 #' @return A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for
 #' the fixed effects (design_mat_fixed), fitted aghq (mod) and indexes to partition the posterior samples
 #' (boundary_samp_indexes, random_samp_indexes and fixed_samp_indexes).
 #'
 #' @export
-model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4, size = NULL, cens = NULL, weight = NULL, strata = NULL, M = 3000, customized_template = NULL, option_list = list()) {
+model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4, size = NULL, cens = NULL, weight = NULL, strata = NULL, M = 3000, customized_template = NULL, option_list = list(), envir = parent.frame()) {
   # parse the input formula
   parse_result <- parse_formula(formula)
   response_var <- parse_result$response
@@ -302,9 +305,9 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       }
     }
     model_class <- rand_effect$model
-    sd.prior <- eval(rand_effect$sd.prior)
+    sd.prior <- eval(rand_effect$sd.prior, envir = envir)
     if (is.null(sd.prior)) {
-      sd.prior <- eval(rand_effect$prior)
+      sd.prior <- eval(rand_effect$prior, envir = envir)
       if(is.null(sd.prior)){
         sd.prior <- list(prior = "exp", param = list(u = 1, alpha = 0.5))
       }
@@ -332,6 +335,10 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
             warnings("The value of alpha is not provided in sd.prior$param: automatically filled with 0.5.")
             sd.prior$param$alpha <- 0.5
           }
+          if(is.null(sd.prior$param$u)){
+            stop("Error: The value of u is not provided in sd.prior$param.")
+          }
+          
             
         }
       }
@@ -346,17 +353,17 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     
 
     if (model_class == "IWP") {
-      order <- eval(rand_effect$order)
-      knots <- eval(rand_effect$knots)
-      k <- eval(rand_effect$k)
-      initial_location <- eval(rand_effect$initial_location)
+      order <- eval(rand_effect$order, envir = envir)
+      knots <- eval(rand_effect$knots, envir = envir)
+      k <- eval(rand_effect$k, envir = envir)
+      initial_location <- eval(rand_effect$initial_location, envir = envir)
       if (!(is.null(k)) && k < 3) {
         stop("Error: parameter <k> in the random effect part should be >= 3.")
       }
       if (order < 1) {
         stop("Error: Parameter <order> in the random effect part should be >= 1.")
       }
-      boundary.prior <- eval(rand_effect$boundary.prior)
+      boundary.prior <- eval(rand_effect$boundary.prior, envir = envir)
       # If the user does not specify initial_location, compute initial_location with
       # the min of data[[smoothing_var]]
       if (is.null(initial_location)) {
@@ -402,11 +409,11 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instances[[length(instances) + 1]] <- instance
     }
     else if (model_class == "sGP"){
-      a <- eval(rand_effect$a)
-      k <- eval(rand_effect$k)
-      initial_location <- eval(rand_effect$initial_location)
+      a <- eval(rand_effect$a, envir = envir)
+      k <- eval(rand_effect$k, envir = envir)
+      initial_location <- eval(rand_effect$initial_location, envir = envir)
       if("m" %in% names(rand_effect)){
-        m <- eval(rand_effect$m)
+        m <- eval(rand_effect$m, envir = envir)
       }
       else{
         m <- 1
@@ -419,7 +426,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       if (a < 0) {
         stop("Error: Parameter <a> in the random effect part should be positive.")
       }
-      boundary.prior <- eval(rand_effect$boundary.prior)
+      boundary.prior <- eval(rand_effect$boundary.prior, envir = envir)
       # If the user does not specify initial_location, compute initial_location with
       # the min of data[[smoothing_var]]
       if (is.null(initial_location)) {
@@ -428,13 +435,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       initialized_smoothing_var <- data[[smoothing_var]] - initial_location
       observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
       if("region" %in% names(rand_effect)){
-        region <- eval(rand_effect$region)
+        region <- eval(rand_effect$region, envir = envir)
       }
       else{
         region <- range(observed_x)
       }
       if("accuracy" %in% names(rand_effect)){
-        accuracy <- eval(rand_effect$accuracy)
+        accuracy <- eval(rand_effect$accuracy, envir = envir)
       }
       else{
         accuracy <- 0.01
@@ -444,7 +451,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       }
       boundary <- TRUE
       if ("boundary" %in% names(rand_effect)){
-        boundary <- eval(rand_effect$boundary)
+        boundary <- eval(rand_effect$boundary, envir = envir)
       }
       instance <- new(model_class,
                       response_var = response_var,

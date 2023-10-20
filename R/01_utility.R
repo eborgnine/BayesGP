@@ -537,14 +537,14 @@ global_poly_helper_sGP <- function(refined_x, a, m, initial_location = NULL) {
 
 #' Construct prior based on d-step prediction SD (for IWP)
 #'
-#' @param prior A list that contains a and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.
+#' @param prior A list that contains alpha and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = alpha}.
 #' @param d A numeric value for the prediction step.
 #' @param p An integer for the order of IWP.
-#' @return A list that contains a and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
+#' @return A list that contains alpha and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = alpha}, that yields the ideal prior on the d-step SD.
 #' @export
 prior_conversion_IWP <- function(d, prior, p) {
   Cp <- (d^((2 * p) - 1)) / (((2 * p) - 1) * (factorial(p - 1)^2))
-  prior_q <- list(a = prior$a, u = (prior$u * (1 / sqrt(Cp))))
+  prior_q <- list(alpha = prior$alpha, u = (prior$u * (1 / sqrt(Cp))))
   prior_q
 }
 
@@ -560,18 +560,18 @@ compute_d_step_sGPsd <- function(d,a){
 
 #' Construct prior based on d-step prediction SD (for sGP)
 #'
-#' @param prior A list that contains a and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.
+#' @param prior A list that contains alpha and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = alpha}.
 #' @param d A numeric value for the prediction step.
 #' @param a The frequency parameter of the sGP.
 #' @param m The number of harmonics that should be considered, by default m = 1 represents only the sGP.
-#' @return A list that contains a and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
+#' @return A list that contains alpha and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = alpha}, that yields the ideal prior on the d-step SD.
 #' @export
 prior_conversion_sGP <- function(d, prior, a, m = 1) {
   correction_factor <- 0
   for (i in 1:m) {
     correction_factor <- correction_factor + compute_d_step_sGPsd(d = d, a = (i*a))
   }
-  prior_SD <- list(u = prior$u/correction_factor, a = prior$a)
+  prior_SD <- list(u = prior$u/correction_factor, alpha = prior$alpha)
   prior_SD
 }
 

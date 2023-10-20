@@ -9,12 +9,12 @@ prior_conversion_IWP(d, prior, p)
 \arguments{
 \item{d}{A numeric value for the prediction step.}
 
-\item{prior}{A list that contains a and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.}
+\item{prior}{A list that contains alpha and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = alpha}.}
 
 \item{p}{An integer for the order of IWP.}
 }
 \value{
-A list that contains a and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
+A list that contains alpha and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = alpha}, that yields the ideal prior on the d-step SD.
 }
 \description{
 Construct prior based on d-step prediction SD (for IWP)
