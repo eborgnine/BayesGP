@@ -338,8 +338,6 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
           if(is.null(sd.prior$param$u)){
             stop("Error: The value of u is not provided in sd.prior$param.")
           }
-          
-            
         }
       }
       
@@ -350,6 +348,22 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
         stop("Error: The value of sd.prior$param$alpha is not specified as a probability.")
       }
     }
+    if(is.numeric(sd.prior$h)){
+      if(model_class == "IWP"){
+        sd.prior$param <- prior_conversion_IWP(d = sd.prior$h, prior = sd.prior$param, p = rand_effect$order)
+      }
+      else if(model_class == "sGP"){
+        sd.prior$param <- prior_conversion_sGP(d = sd.prior$h, prior = sd.prior$param, a = rand_effect$a, m = rand_effect$m)
+      }
+    } else if(is.numeric(sd.prior$step)){
+      if(model_class == "IWP"){
+        sd.prior$param <- prior_conversion_IWP(d = sd.prior$step, prior = sd.prior$param, p = rand_effect$order)
+      }
+      else if(model_class == "sGP"){
+        sd.prior$param <- prior_conversion_sGP(d = sd.prior$step, prior = sd.prior$param, a = rand_effect$a, m = rand_effect$m)
+      }
+    }
+    
     
 
     if (model_class == "IWP") {
@@ -547,12 +561,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   names(global_samp_indexes) <- global_effects_names
   names(coef_samp_indexes) <- rand_effects_names
 
-  for (fixed_samp_index in ((cur_end + 1):w_count)) {
-    fixed_samp_indexes[[length(fixed_samp_indexes) + 1]] <- fixed_samp_index
+  if((cur_end + 1) <= w_count){
+    for (fixed_samp_index in ((cur_end + 1):w_count)) {
+      fixed_samp_indexes[[length(fixed_samp_indexes) + 1]] <- fixed_samp_index
+    }
   }
-
   names(fixed_samp_indexes) <- fixed_effects_names
-
+  
   fit_result <- list(
     instances = instances, design_mat_fixed = design_mat_fixed, mod = mod,
     boundary_samp_indexes = global_samp_indexes,

@@ -14,22 +14,25 @@ summary.FitResult <- function(object) {
     for (instance in object$instances) {
       theta_names <- c(theta_names, paste("theta(", toString(instance@smoothing_var), ")", sep = ""))
     }
-    
-    row.names(summary_table) <- theta_names
+    if((length(row.names(summary_table)) - length(theta_names)) >= 1 ){
+      num_theta_family <- (length(row.names(summary_table)) - length(theta_names))
+      row.names(summary_table) <- c(theta_names, rep(paste("theta(", "family", ")", sep = ""),  num_theta_family))
+    }
     print(summary_table)
     cat("\n")
   }
   # samps <- aghq::sample_marginal(object$mod, M = 3000)
   samps <- object$samps
-  fixed_samps <- samps$samps[unlist(object$fixed_samp_indexes), , drop = F]
-  fixed_summary <- apply(X = fixed_samps,MARGIN = 1, summary)
-  colnames(fixed_summary) <- names(object$fixed_samp_indexes)
-  fixed_sd <- apply(X = fixed_samps, MARGIN = 1, sd)
-  fixed_summary <- rbind(fixed_summary, fixed_sd)
-  rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
-
-  cat("Here are some moments and quantiles for the fixed effects: \n\n")
-  print(t(fixed_summary[c(2:5, 7), ]))
+  if(length(unlist(object$fixed_samp_indexes)) >= 1){
+    fixed_samps <- samps$samps[unlist(object$fixed_samp_indexes), , drop = F]
+    fixed_summary <- apply(X = fixed_samps,MARGIN = 1, summary)
+    colnames(fixed_summary) <- names(object$fixed_samp_indexes)
+    fixed_sd <- apply(X = fixed_samps, MARGIN = 1, sd)
+    fixed_summary <- rbind(fixed_summary, fixed_sd)
+    rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
+    cat("Here are some moments and quantiles for the fixed effects: \n\n")
+    print(t(fixed_summary[c(2:5, 7), ]))
+  }
 }
 
 #' To predict the GP component in the fitted model, at the locations specified in `newdata`. 

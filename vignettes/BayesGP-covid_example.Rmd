@@ -49,7 +49,7 @@ Here $\xi(t)$ is the standard Gaussian white noise process, or can be viewed as 
 To fit the above model using the BayesGP package, we simply do the following:
 ```{r warning=FALSE}
 fit_result <- model_fit(new_deaths ~ weekdays1 + weekdays2 + weekdays3 + weekdays4 + weekdays5 + weekdays6 +
-                          f(smoothing_var = t, model = "IWP", order = 3, k = 100, sd.prior = list(prior = "exp", para = list(u = 0.02, alpha = 0.5))), 
+                          f(smoothing_var = t, model = "IWP", order = 3, k = 100, sd.prior = list(prior = "exp", param = list(u = 0.02, alpha = 0.5), h = 1)), 
                         data = covid_canada, method = "aghq", family = "Poisson")
 ```
 
