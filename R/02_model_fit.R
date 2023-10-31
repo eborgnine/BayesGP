@@ -1,4 +1,4 @@
-get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size, cens, weight, strata, method, M, customized_template, option_list) {
+get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, aghq_k, size, cens, weight, strata, method, M, customized_template, option_list, envir = parent.frame()) {
   if(is.null(customized_template)){
     cpp = "BayesGP"
   }
@@ -65,6 +65,50 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
   # For the variance of the Gaussian family
   # From control.family, if applicable
   if (family_type == 0) {
+    
+    if (is.null(control.family$sd_prior)) {
+      control.family$sd_prior <- eval(control.family$prior, envir = envir)
+      if(is.null(control.family$sd_prior)){
+        control.family$sd_prior <- list(prior = "exp", param = list(u = 1, alpha = 0.5))
+      }
+    }
+    if (length(control.family$sd_prior) == 1){
+      if(is.numeric(control.family$sd_prior)){
+        control.family$sd_prior <- list(prior = "exp", param = list(u = as.numeric(control.family$sd_prior), alpha = 0.5))
+      }
+      else{
+        stop("Error: The value of sd.prior must be a list or a numeric value.")
+      }
+    } else if (length(control.family$sd_prior) > 1) {
+      if(!"prior" %in% names(control.family$sd_prior)){
+        control.family$sd_prior$prior <- "exp"
+      }
+      if(!"param" %in% names(control.family$sd_prior)){
+        stop("If sd.prior is provided as a list, it must contains a list called param.")
+      }else{
+        if(length(control.family$sd_prior$param) == 1){
+          control.family$sd_prior$param <- list(u = control.family$sd_prior$param[[1]], alpha = 0.5)
+        }
+        else{
+          control.family$sd_prior$param <- list(u = control.family$sd_prior$param$u, alpha = control.family$sd_prior$param$alpha)
+          if(is.null(control.family$sd_prior$param$alpha)){
+            warnings("The value of alpha is not provided in control.family$sd_prior$param: automatically filled with 0.5.")
+            control.family$sd_prior$param$alpha <- 0.5
+          }
+          if(is.null(control.family$sd_prior$param$u)){
+            stop("Error: The value of u is not provided in control.family$sd_prior$param.")
+          }
+        }
+      }
+      
+      if (control.family$sd_prior$prior != "exp" & control.family$sd_prior$prior != "Exp" & control.family$sd_prior$prior != "exponential" & control.family$sd_prior$prior != "Exponential") {
+        stop("Error: For each random effect, control.family$sd_prior currently only supports 'exp' (exponential) as prior.")
+      }
+      if(control.family$sd_prior$param$alpha > 1 | control.family$sd_prior$param$alpha < 0){
+        stop("Error: The value of control.family$sd_prior$param$alpha is not specified as a probability.")
+      }
+    }
+    
     u[[length(u) + 1]] <- control.family$sd_prior$param$u
     alpha[[length(alpha) + 1]] <- control.family$sd_prior$param$alpha
   }
@@ -499,10 +543,6 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     control.family <- list(sd_prior = list(prior = "exp", param = list(u = 1, alpha = 0.5)))
   }
 
-  if (control.family$sd_prior$prior != "exp") {
-    stop("Error: Currently, control.family only supports 'exp' (exponential) as prior.")
-  }
-
   if (missing(control.fixed)) {
     control.fixed <- list(intercept = list(prec = 0.01))
     for (fixed_effect in fixed_effects) {
@@ -514,7 +554,8 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
                                            control.family = control.family, control.fixed = control.fixed, 
                                            fixed_effects = fixed_effects, aghq_k = aghq_k, size = size, cens = cens,
                                            weight = weight, strata = strata,
-                                           method = method, M = M, option_list = option_list, customized_template = customized_template)
+                                           method = method, M = M, option_list = option_list, customized_template = customized_template,
+                                           envir = envir)
   mod <- result_by_method$mod
   w_count <- result_by_method$w_count
 

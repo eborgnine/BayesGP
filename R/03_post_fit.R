@@ -5,21 +5,26 @@ summary.FitResult <- function(object) {
     aghq_output <- capture.output(aghq_summary)
     cur_index <- grep("Here are some moments and quantiles for the transformed parameter:", aghq_output)
     cat(paste(aghq_output[1:(cur_index - 1)], collapse = "\n"))
-    cat("\nHere are some moments and quantiles for the log precision: \n")
-    cur_index <- grep("median    97.5%", aghq_output)
-    cat(paste(aghq_output[cur_index], collapse = "\n"))
     
-    summary_table <- as.matrix(aghq_summary$summarytable)
-    theta_names <- c()
-    for (instance in object$instances) {
-      theta_names <- c(theta_names, paste("theta(", toString(instance@smoothing_var), ")", sep = ""))
+    if(class(aghq_summary) == "aghqsummary"){
+      cat("\nHere are some moments and quantiles for the log precision: \n")
+      # cur_index <- grep("median    97.5%", aghq_output)
+      # cat(paste(aghq_output[cur_index], collapse = "\n"))
     }
-    if((length(row.names(summary_table)) - length(theta_names)) >= 1 ){
-      num_theta_family <- (length(row.names(summary_table)) - length(theta_names))
-      row.names(summary_table) <- c(theta_names, rep(paste("theta(", "family", ")", sep = ""),  num_theta_family))
+    
+    if(!is.null(aghq_summary$summarytable)){
+      summary_table <- as.matrix(aghq_summary$summarytable)
+      theta_names <- c()
+      for (instance in object$instances) {
+        theta_names <- c(theta_names, paste("theta(", toString(instance@smoothing_var), ")", sep = ""))
+      }
+      if((length(row.names(summary_table)) - length(theta_names)) >= 1 ){
+        num_theta_family <- (length(row.names(summary_table)) - length(theta_names))
+        row.names(summary_table) <- c(theta_names, rep(paste("theta(", "family", ")", sep = ""),  num_theta_family))
+      }
+      print(summary_table)
+      cat("\n")
     }
-    print(summary_table)
-    cat("\n")
   }
   # samps <- aghq::sample_marginal(object$mod, M = 3000)
   samps <- object$samps
@@ -31,7 +36,7 @@ summary.FitResult <- function(object) {
     fixed_summary <- rbind(fixed_summary, fixed_sd)
     rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
     cat("Here are some moments and quantiles for the fixed effects: \n\n")
-    print(t(fixed_summary[c(2:5, 7), ]))
+    print(t(fixed_summary[c(2:5, 7), , drop = FALSE]))
   }
 }
 
