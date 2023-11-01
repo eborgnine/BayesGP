@@ -31,9 +31,11 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
   u <- list()
   alpha <- list()
   betaprec <- list()
+  betamean <- list()
   
   # Containers for fixed effects
   beta_fixed_prec <- list()
+  beta_fixed_mean <- list()
   Xf <- list()
   
   w_count <- 0
@@ -46,11 +48,13 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     if (class(instance) == "IWP") {
       X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
       betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
+      betamean[[length(betamean) + 1]] <- instance@boundary.prior$mean
       w_count <- w_count + ncol(instance@X)
     }
     else if(class(instance) == "sGP"){
       X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
       betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
+      betamean[[length(betamean) + 1]] <- instance@boundary.prior$mean
       w_count <- w_count + ncol(instance@X)
     }
     B[[length(B) + 1]] <- dgTMatrix_wrapper(instance@B)
@@ -117,6 +121,7 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
       for (i in 1:length(design_mat_fixed)) {
         # For each fixed effects
         beta_fixed_prec[[i]] <- control.fixed[[fixed_effects[[i]]]]$prec
+        beta_fixed_mean[[i]] <- control.fixed[[fixed_effects[[i]]]]$mean
         Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
         w_count <- w_count + ncol(design_mat_fixed[[i]])
       }
@@ -129,8 +134,11 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
       # For each fixed effects
       if (i == 1) {
         beta_fixed_prec[[i]] <- control.fixed$intercept$prec
+        beta_fixed_mean[[i]] <- control.fixed$intercept$mean
+        
       } else {
         beta_fixed_prec[[i]] <- control.fixed[[fixed_effects[[i - 1]]]]$prec
+        beta_fixed_mean[[i]] <- control.fixed[[fixed_effects[[i - 1]]]]$mean
       }
       Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
       w_count <- w_count + ncol(design_mat_fixed[[i]])
@@ -146,9 +154,11 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     u = u,
     alpha = alpha,
     betaprec = betaprec,
+    betamean = betamean,
     
     # For Fixed Effects:
     beta_fixed_prec = beta_fixed_prec,
+    beta_fixed_mean = beta_fixed_mean,
     Xf = Xf,
     
     # Response
@@ -440,9 +450,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       }
       observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
       if (is.null(boundary.prior)) {
-        boundary.prior <- list(prec = 0.01)
-      }else if(length(boundary.prior) == 1 & is.numeric(boundary.prior)){
-        boundary.prior <- list(prec = boundary.prior[[1]])
+        boundary.prior <- list(prec = 0.01, mean = 0)
+      }
+      if(is.null(boundary.prior$prec)){
+        boundary.prior$prec <- 0.01
+      }
+      if(is.null(boundary.prior$mean)){
+        boundary.prior$mean <- 0
       }
       instance <- new(model_class,
         response_var = response_var,
@@ -505,7 +519,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
         accuracy <- 0.01
       }
       if (is.null(boundary.prior)) {
-        boundary.prior <- list(prec = 0.01)
+        boundary.prior <- list(prec = 0.01, mean = 0)
+      }
+      if(is.null(boundary.prior$prec)){
+        boundary.prior$prec <- 0.01
+      }
+      if(is.null(boundary.prior$mean)){
+        boundary.prior$mean <- 0
       }
       boundary <- TRUE
       if ("boundary" %in% names(rand_effect)){
@@ -544,9 +564,30 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   }
 
   if (missing(control.fixed)) {
-    control.fixed <- list(intercept = list(prec = 0.01))
+    control.fixed <- list(intercept = list(prec = 0.01, mean = 0))
     for (fixed_effect in fixed_effects) {
-      control.fixed[[fixed_effect]] <- list(prec = 0.01)
+      control.fixed[[fixed_effect]] <- list(prec = 0.01, mean = 0)
+    }
+  }
+  if(!"intercept" %in% names(control.fixed)){
+    control.fixed$intercept <- list(prec = 0.01, mean = 0)
+  }
+  if(is.null(control.fixed$intercept$prec)){
+    control.fixed$intercept$prec <- 0.01
+  }
+  if(is.null(control.fixed$intercept$mean)){
+    control.fixed$intercept$mean <- 0
+  }
+  
+  for (fixed_effect in fixed_effects) {
+    if(!as.character(fixed_effect) %in% names(control.fixed)){
+      control.fixed[[fixed_effect]] <- list(prec = 0.01, mean = 0)
+    }
+    if(is.null(control.fixed[[fixed_effect]]$prec)){
+      control.fixed[[fixed_effect]]$prec <- 0.01
+    }
+    if(is.null(control.fixed[[fixed_effect]]$mean)){
+      control.fixed[[fixed_effect]]$mean <- 0
     }
   }
 
