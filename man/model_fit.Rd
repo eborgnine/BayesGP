@@ -18,6 +18,7 @@ model_fit(
   strata = NULL,
   M = 3000,
   customized_template = NULL,
+  Customized_RE = NULL,
   option_list = list(),
   envir = parent.frame()
 )
@@ -40,6 +41,8 @@ model_fit(
 \item{M}{The number of posterior samples to be taken, by default is 3000.}
 
 \item{customized_template}{The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `BayesGP` will be used.}
+
+\item{Customized_RE}{The list that contains the compute_B and compute_P functions for the customized random effect. By default, this is NULL and there is not customized random effect in the model.}
 
 \item{option_list}{A list that controls the details of the inference algorithm, by default is an empty list.}
 

@@ -80,38 +80,36 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
       if(is.numeric(control.family$sd_prior)){
         control.family$sd_prior <- list(prior = "exp", param = list(u = as.numeric(control.family$sd_prior), alpha = 0.5))
       }
+    } 
+    
+    if(!"prior" %in% names(control.family$sd_prior)){
+      control.family$sd_prior$prior <- "exp"
+    }
+    if(!"param" %in% names(control.family$sd_prior)){
+      stop("If sd.prior is provided as a list, it must contains a list called param.")
+    }else{
+      if(length(control.family$sd_prior$param) == 1){
+        control.family$sd_prior$param <- list(u = control.family$sd_prior$param[[1]], alpha = 0.5)
+      }
       else{
-        stop("Error: The value of sd.prior must be a list or a numeric value.")
-      }
-    } else if (length(control.family$sd_prior) > 1) {
-      if(!"prior" %in% names(control.family$sd_prior)){
-        control.family$sd_prior$prior <- "exp"
-      }
-      if(!"param" %in% names(control.family$sd_prior)){
-        stop("If sd.prior is provided as a list, it must contains a list called param.")
-      }else{
-        if(length(control.family$sd_prior$param) == 1){
-          control.family$sd_prior$param <- list(u = control.family$sd_prior$param[[1]], alpha = 0.5)
+        control.family$sd_prior$param <- list(u = control.family$sd_prior$param$u, alpha = control.family$sd_prior$param$alpha)
+        if(is.null(control.family$sd_prior$param$alpha)){
+          warnings("The value of alpha is not provided in control.family$sd_prior$param: automatically filled with 0.5.")
+          control.family$sd_prior$param$alpha <- 0.5
         }
-        else{
-          control.family$sd_prior$param <- list(u = control.family$sd_prior$param$u, alpha = control.family$sd_prior$param$alpha)
-          if(is.null(control.family$sd_prior$param$alpha)){
-            warnings("The value of alpha is not provided in control.family$sd_prior$param: automatically filled with 0.5.")
-            control.family$sd_prior$param$alpha <- 0.5
-          }
-          if(is.null(control.family$sd_prior$param$u)){
-            stop("Error: The value of u is not provided in control.family$sd_prior$param.")
-          }
+        if(is.null(control.family$sd_prior$param$u)){
+          stop("Error: The value of u is not provided in control.family$sd_prior$param.")
         }
-      }
-      
-      if (control.family$sd_prior$prior != "exp" & control.family$sd_prior$prior != "Exp" & control.family$sd_prior$prior != "exponential" & control.family$sd_prior$prior != "Exponential") {
-        stop("Error: For each random effect, control.family$sd_prior currently only supports 'exp' (exponential) as prior.")
-      }
-      if(control.family$sd_prior$param$alpha > 1 | control.family$sd_prior$param$alpha < 0){
-        stop("Error: The value of control.family$sd_prior$param$alpha is not specified as a probability.")
       }
     }
+    
+    if (control.family$sd_prior$prior != "exp" & control.family$sd_prior$prior != "Exp" & control.family$sd_prior$prior != "exponential" & control.family$sd_prior$prior != "Exponential") {
+      stop("Error: For each random effect, control.family$sd_prior currently only supports 'exp' (exponential) as prior.")
+    }
+    if(control.family$sd_prior$param$alpha > 1 | control.family$sd_prior$param$alpha < 0){
+      stop("Error: The value of control.family$sd_prior$param$alpha is not specified as a probability.")
+    }
+    
     
     u[[length(u) + 1]] <- control.family$sd_prior$param$u
     alpha[[length(alpha) + 1]] <- control.family$sd_prior$param$alpha
@@ -319,6 +317,7 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
 #' @param cens The name of the right-censoring indicator, should be one of the variables in `data`. The default value is "NULL".
 #' @param M The number of posterior samples to be taken, by default is 3000.
 #' @param customized_template The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `BayesGP` will be used.
+#' @param Customized_RE The list that contains the compute_B and compute_P functions for the customized random effect. By default, this is NULL and there is not customized random effect in the model.
 #' @param option_list A list that controls the details of the inference algorithm, by default is an empty list.
 #' @param envir The environment in which the formula and other expressions are to be evaluated. 
 #'   Defaults to `parent.frame()`, which refers to the environment from which the function was called.
@@ -328,7 +327,7 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
 #' (boundary_samp_indexes, random_samp_indexes and fixed_samp_indexes).
 #'
 #' @export
-model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4, size = NULL, cens = NULL, weight = NULL, strata = NULL, M = 3000, customized_template = NULL, option_list = list(), envir = parent.frame()) {
+model_fit <- function(formula, data, method = "aghq", family = "Gaussian", control.family, control.fixed, aghq_k = 4, size = NULL, cens = NULL, weight = NULL, strata = NULL, M = 3000, customized_template = NULL, Customized_RE = NULL, option_list = list(), envir = parent.frame()) {
   # parse the input formula
   parse_result <- parse_formula(formula)
   response_var <- parse_result$response
@@ -359,6 +358,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       }
     }
     model_class <- rand_effect$model
+    
     sd.prior <- eval(rand_effect$sd.prior, envir = envir)
     if (is.null(sd.prior)) {
       sd.prior <- eval(rand_effect$prior, envir = envir)
@@ -370,56 +370,35 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       if(is.numeric(sd.prior)){
         sd.prior <- list(prior = "exp", param = list(u = as.numeric(sd.prior), alpha = 0.5))
       }
+    }
+    if(!"prior" %in% names(sd.prior)){
+      sd.prior$prior <- "exp"
+    }
+    if(!"param" %in% names(sd.prior)){
+      stop("If sd.prior is provided as a list, it must contains a list called param.")
+    }else{
+      if(length(sd.prior$param) == 1){
+        sd.prior$param <- list(u = sd.prior$param[[1]], alpha = 0.5)
+      }
       else{
-        stop("Error: The value of sd.prior must be a list or a numeric value.")
-      }
-    } else if (length(sd.prior) > 1) {
-      if(!"prior" %in% names(sd.prior)){
-        sd.prior$prior <- "exp"
-      }
-      if(!"param" %in% names(sd.prior)){
-        stop("If sd.prior is provided as a list, it must contains a list called param.")
-      }else{
-        if(length(sd.prior$param) == 1){
-          sd.prior$param <- list(u = sd.prior$param[[1]], alpha = 0.5)
+        sd.prior$param <- list(u = sd.prior$param$u, alpha = sd.prior$param$alpha)
+        if(is.null(sd.prior$param$alpha)){
+          warning("The value of alpha is not provided in sd.prior$param: automatically filled with 0.5.")
+          sd.prior$param$alpha <- 0.5
         }
-        else{
-          sd.prior$param <- list(u = sd.prior$param$u, alpha = sd.prior$param$alpha)
-          if(is.null(sd.prior$param$alpha)){
-            warnings("The value of alpha is not provided in sd.prior$param: automatically filled with 0.5.")
-            sd.prior$param$alpha <- 0.5
-          }
-          if(is.null(sd.prior$param$u)){
-            stop("Error: The value of u is not provided in sd.prior$param.")
-          }
+        if(is.null(sd.prior$param$u)){
+          stop("Error: The value of u is not provided in sd.prior$param.")
         }
-      }
-      
-      if (sd.prior$prior != "exp" & sd.prior$prior != "Exp" & sd.prior$prior != "exponential" & sd.prior$prior != "Exponential") {
-        stop("Error: For each random effect, sd.prior currently only supports 'exp' (exponential) as prior.")
-      }
-      if(sd.prior$param$alpha > 1 | sd.prior$param$alpha < 0){
-        stop("Error: The value of sd.prior$param$alpha is not specified as a probability.")
-      }
-    }
-    if(is.numeric(sd.prior$h)){
-      if(model_class == "IWP"){
-        sd.prior$param <- prior_conversion_IWP(d = sd.prior$h, prior = sd.prior$param, p = rand_effect$order)
-      }
-      else if(model_class == "sGP"){
-        sd.prior$param <- prior_conversion_sGP(d = sd.prior$h, prior = sd.prior$param, a = rand_effect$a, m = rand_effect$m)
-      }
-    } else if(is.numeric(sd.prior$step)){
-      if(model_class == "IWP"){
-        sd.prior$param <- prior_conversion_IWP(d = sd.prior$step, prior = sd.prior$param, p = rand_effect$order)
-      }
-      else if(model_class == "sGP"){
-        sd.prior$param <- prior_conversion_sGP(d = sd.prior$step, prior = sd.prior$param, a = rand_effect$a, m = rand_effect$m)
       }
     }
     
+    if (sd.prior$prior != "exp" & sd.prior$prior != "Exp" & sd.prior$prior != "exponential" & sd.prior$prior != "Exponential") {
+      stop("Error: For each random effect, sd.prior currently only supports 'exp' (exponential) as prior.")
+    }
+    if(sd.prior$param$alpha > 1 | sd.prior$param$alpha < 0){
+      stop("Error: The value of sd.prior$param$alpha is not specified as a probability.")
+    }
     
-
     if (model_class == "IWP") {
       order <- eval(rand_effect$order, envir = envir)
       knots <- eval(rand_effect$knots, envir = envir)
@@ -428,7 +407,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       if (!(is.null(k)) && k < 3) {
         stop("Error: parameter <k> in the random effect part should be >= 3.")
       }
-      if (order < 1) {
+      if (is.null(order) | order < 1) {
         stop("Error: Parameter <order> in the random effect part should be >= 1.")
       }
       boundary.prior <- eval(rand_effect$boundary.prior, envir = envir)
@@ -469,6 +448,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instance@B <- local_poly(instance)
       instance@P <- compute_weights_precision(instance)
       instances[[length(instances) + 1]] <- instance
+      
+      if(is.numeric(sd.prior$h)){
+        sd.prior$param <- prior_conversion_IWP(d = sd.prior$h, prior = sd.prior$param, p = eval(rand_effect$order, envir = envir))
+      } else if(is.numeric(sd.prior$step)){
+        sd.prior$param <- prior_conversion_IWP(d = sd.prior$step, prior = sd.prior$param, p = eval(rand_effect$order, envir = envir))
+      }
+      
     } 
     else if (model_class == "IID") {
       instance <- new(model_class,
@@ -476,6 +462,17 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
         smoothing_var = smoothing_var, sd.prior = sd.prior, data = data
       )
       # Case for IID
+      instance@B <- compute_B(instance)
+      instance@P <- compute_P(instance)
+      instances[[length(instances) + 1]] <- instance
+    }
+    else if (model_class == "Customized") {
+      instance <- new(model_class,
+                      response_var = response_var,
+                      smoothing_var = smoothing_var, sd.prior = sd.prior, data = data,
+                      compute_B = Customized_RE$compute_B, compute_P = Customized_RE$compute_P
+      )
+      # Case for Customized
       instance@B <- compute_B(instance)
       instance@P <- compute_P(instance)
       instances[[length(instances) + 1]] <- instance
@@ -542,6 +539,12 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instance@B <- compute_B(instance)
       instance@P <- compute_P(instance)
       instances[[length(instances) + 1]] <- instance
+      
+      if(is.numeric(sd.prior$h)){
+        sd.prior$param <- prior_conversion_sGP(d = sd.prior$h, prior = sd.prior$param, a = eval(rand_effect$a, envir = envir), m = m)
+      } else if(is.numeric(sd.prior$step)){
+        sd.prior$param <- prior_conversion_sGP(d = sd.prior$step, prior = sd.prior$param, a = eval(rand_effect$a, envir = envir), m = m)
+      }
     }
   }
 
@@ -672,6 +675,83 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   class(fit_result) <- "FitResult"
 
   return(fit_result)
+}
+
+
+
+
+#' @title Bayesian Model Averaging for Hierarchical Models
+#'
+#' @description
+#' Performs Bayesian Model Averaging over a sequence of values for a specified variable within a hierarchical model.
+#' This function repeatedly fits a model for each value of the looping variable, compiles the log marginal likelihoods,
+#' and calculates the posterior probabilities for the variable's values.
+#'
+#' @param loop_var_name A string specifying the name of the variable to loop over.
+#' @param loop_var_values A numeric vector containing the values to loop over for the specified variable.
+#' @param prior_func A function that takes the specified loop_var_values and returns the values of the prior for the loop variable.
+#' By default, it is a uniform prior which returns a constant value, indicating equal probability for all values.
+#' @param parallel Logical, indicating whether or not to run the model fitting in parallel (default is FALSE).
+#' @param cores The number of cores to use for parallel execution (default is detected cores - 1).
+#' @param ... Additional arguments passed to the model fitting function `model_fit`.
+#'
+#' @return A data frame containing the values of the looping variable, their corresponding log marginal likelihoods,
+#' and posterior probabilities.
+#' 
+#' @export
+model_fit_BMA <- function(loop_var_name, loop_var_values, prior_func = function(x){1}, parallel = FALSE, cores = (parallel::detectCores() - 1), ...) {
+  update_arg <- function(arg_list, arg_name, arg_value) {
+    if (arg_name %in% names(arg_list)) {
+      arg_list[[arg_name]] <- arg_value
+    } else {
+      for (name in names(arg_list)) {
+        if (is.function(arg_list[[name]])) {
+          formals(arg_list[[name]])[[arg_name]] <- arg_value
+        }
+        if (is.list(arg_list[[name]])) {
+          arg_list[[name]] <- update_arg(arg_list[[name]], arg_name, arg_value)
+        }
+      }
+    }
+    return(arg_list)
+  }
+  
+  args_list <- list(...)
+  log_ml <- c()
+  
+  run_model <- function(loop_var) {
+    safe_env <- new.env(parent = parent.frame())
+    assign(loop_var_name, loop_var, envir = safe_env)
+    args_list$envir <- safe_env
+    args_list <- update_arg(args_list, loop_var_name, loop_var)
+    model_fit_result <- do.call("model_fit", args_list)
+    model_fit_result$mod$normalized_posterior$lognormconst
+  }
+  
+  if (!parallel) {
+    for (loop_var in loop_var_values) {
+      log_ml <- c(log_ml, run_model(loop_var))
+    }
+  } else {
+    cl <- parallel::makeCluster(cores)
+    parallel::clusterEvalQ(cl, {
+      required_packages <- c("Matrix", "aghq", "TMB")  # List the required packages
+      lapply(required_packages, function(pkg) {
+        library(pkg, character.only = TRUE)
+      })
+    })
+    parallel::clusterExport(cl, list("update_arg", "model_fit", "args_list", "loop_var_name", "prior_func"), envir = environment())
+    log_ml <- parallel::parLapply(cl, loop_var_values, run_model)
+    parallel::stopCluster(cl)
+  }
+  
+  log_joint <- unlist(log_ml) + log(prior_func(loop_var_values))
+  log_joint <- log_joint - max(log_joint)
+  post <- exp(log_joint)
+  integral_result <- sfsmisc::integrate.xy(loop_var_values, post)
+  post <- post / integral_result
+  data.frame(var = loop_var_values, post = post, log_ml = unlist(log_ml))
+  
 }
 
 

@@ -38,6 +38,13 @@ setClass("IID", slots = list(
   data = "data.frame", B = "matrix", P = "matrix"
 ))
 
+# Create a class for Customized using S4
+setClass("Customized", slots = list(
+  response_var = "name", smoothing_var = "name", sd.prior = "list",
+  data = "data.frame", B = "matrix", P = "matrix",
+  compute_B = "function", compute_P = "function"
+))
+
 Compute_Q_sB <- function(a,k,region, accuracy = 0.01, boundary = TRUE){
   ss <- function(M) {Matrix::forceSymmetric(M + Matrix::t(M))}
   x <- seq(min(region),max(region),by = accuracy)
@@ -146,7 +153,6 @@ Compute_Q_sB <- function(a,k,region, accuracy = 0.01, boundary = TRUE){
   Q <- (a^4)*G + C + (a^2)*ss(M)
   Matrix::forceSymmetric(Q)
 }
-
 Compute_B_sB <- function(x, a, k, region, boundary = TRUE){
   if(boundary){
     B_basis <- suppressWarnings(fda::create.bspline.basis(rangeval = c(min(region),max(region)),
@@ -166,7 +172,6 @@ Compute_B_sB <- function(x, a, k, region, boundary = TRUE){
   Bsin <- apply(Bmatrix, 2, function(x) x*sin_matrix)
   cbind(Bcos, Bsin,Bmatrix)
 }
-
 Compute_B_sB_helper <- function(refined_x, a, k, m, region, boundary = TRUE, initial_location = NULL){
   if(is.null(initial_location)){
     initial_location <- min(refined_x)
@@ -188,6 +193,10 @@ setMethod("compute_B", signature = "IID", function(object) {
   x <- as.factor((object@data)[[smoothing_var]])
   B <- model.matrix(~ -1 + x)
   B
+})
+setMethod("compute_B", signature = "Customized", function(object) {
+  smoothing_var <- object@smoothing_var
+  object@compute_B((object@data)[[smoothing_var]])
 })
 setMethod("compute_B", signature = "sGP", function(object) {
   smoothing_var <- object@smoothing_var
@@ -215,6 +224,10 @@ setMethod("compute_P", signature = "IID", function(object) {
   x <- (object@data)[[smoothing_var]]
   num_factor <- length(unique(x))
   diag(nrow = num_factor, ncol = num_factor)
+})
+setMethod("compute_P", signature = "Customized", function(object) {
+  x <- (object@data)[[object@smoothing_var]]
+  object@compute_P(x)
 })
 setMethod("compute_P", signature = "sGP", function(object) {
   smoothing_var <- object@smoothing_var
