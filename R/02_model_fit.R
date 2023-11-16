@@ -70,49 +70,51 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
   # From control.family, if applicable
   if (family_type == 0) {
     
-    if (is.null(control.family$sd_prior)) {
-      control.family$sd_prior <- eval(control.family$prior, envir = envir)
-      if(is.null(control.family$sd_prior)){
-        control.family$sd_prior <- list(prior = "exp", param = list(u = 1, alpha = 0.5))
+    if (is.null(control.family$sd.prior)) {
+      control.family$sd.prior <- eval(control.family$prior, envir = envir)
+      if(is.null(control.family$sd.prior)){
+        control.family$sd.prior <- list(prior = "exp", param = list(u = 1, alpha = 0.5))
       }
     }
-    if (length(control.family$sd_prior) == 1){
-      if(is.numeric(control.family$sd_prior)){
-        control.family$sd_prior <- list(prior = "exp", param = list(u = as.numeric(control.family$sd_prior), alpha = 0.5))
+    if (length(control.family$sd.prior) == 1){
+      if(is.numeric(control.family$sd.prior)){
+        control.family$sd.prior <- list(prior = "exp", param = list(u = as.numeric(control.family$sd.prior), alpha = 0.5))
       }
     } 
     
-    if(!"prior" %in% names(control.family$sd_prior)){
-      control.family$sd_prior$prior <- "exp"
+    if(!"prior" %in% names(control.family$sd.prior)){
+      control.family$sd.prior$prior <- "exp"
     }
-    if(!"param" %in% names(control.family$sd_prior)){
+    if(!"param" %in% names(control.family$sd.prior)){
       stop("If sd.prior is provided as a list, it must contains a list called param.")
     }else{
-      if(length(control.family$sd_prior$param) == 1){
-        control.family$sd_prior$param <- list(u = control.family$sd_prior$param[[1]], alpha = 0.5)
+      if(length(control.family$sd.prior$param) == 1){
+        control.family$sd.prior$param <- list(u = control.family$sd.prior$param[[1]], alpha = 0.5)
       }
       else{
-        control.family$sd_prior$param <- list(u = control.family$sd_prior$param$u, alpha = control.family$sd_prior$param$alpha)
-        if(is.null(control.family$sd_prior$param$alpha)){
-          warnings("The value of alpha is not provided in control.family$sd_prior$param: automatically filled with 0.5.")
-          control.family$sd_prior$param$alpha <- 0.5
+        control.family$sd.prior$param <- list(u = control.family$sd.prior$param$u, alpha = control.family$sd.prior$param$alpha)
+        if(is.null(control.family$sd.prior$param$alpha)){
+          warnings("The value of alpha is not provided in control.family$sd.prior$param: automatically filled with 0.5.")
+          control.family$sd.prior$param$alpha <- 0.5
         }
-        if(is.null(control.family$sd_prior$param$u)){
-          stop("Error: The value of u is not provided in control.family$sd_prior$param.")
+        if(is.null(control.family$sd.prior$param$u)){
+          stop("Error: The value of u is not provided in control.family$sd.prior$param.")
         }
       }
     }
     
-    if (control.family$sd_prior$prior != "exp" & control.family$sd_prior$prior != "Exp" & control.family$sd_prior$prior != "exponential" & control.family$sd_prior$prior != "Exponential") {
-      stop("Error: For each random effect, control.family$sd_prior currently only supports 'exp' (exponential) as prior.")
+    if (control.family$sd.prior$prior != "exp" & control.family$sd.prior$prior != "Exp" & control.family$sd.prior$prior != "exponential" & control.family$sd.prior$prior != "Exponential" & control.family$sd.prior$prior != "Customized") {
+      stop("Error: For each random effect, control.family$sd.prior currently only supports 'exp' (exponential), or 'Customized' as prior.")
     }
-    if(control.family$sd_prior$param$alpha > 1 | control.family$sd_prior$param$alpha < 0){
-      stop("Error: The value of control.family$sd_prior$param$alpha is not specified as a probability.")
+    if(control.family$sd.prior$param$alpha > 1 | control.family$sd.prior$param$alpha < 0){
+      if(control.family$sd.prior$prior != "Customized"){
+        stop("Error: The value of control.family$sd.prior$param$alpha is not specified as a probability.")
+      }
     }
     
     
-    u[[length(u) + 1]] <- control.family$sd_prior$param$u
-    alpha[[length(alpha) + 1]] <- control.family$sd_prior$param$alpha
+    u[[length(u) + 1]] <- control.family$sd.prior$param$u
+    alpha[[length(alpha) + 1]] <- control.family$sd.prior$param$alpha
   }
   if(family_type == 3 || family_type == 4){
     if(length(design_mat_fixed) >= 1){
@@ -392,11 +394,13 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       }
     }
     
-    if (sd.prior$prior != "exp" & sd.prior$prior != "Exp" & sd.prior$prior != "exponential" & sd.prior$prior != "Exponential") {
-      stop("Error: For each random effect, sd.prior currently only supports 'exp' (exponential) as prior.")
+    if (sd.prior$prior != "exp" & sd.prior$prior != "Exp" & sd.prior$prior != "exponential" & sd.prior$prior != "Exponential" & sd.prior$prior != "Customized") {
+      stop("Error: For each random effect, sd.prior currently only supports 'exp' (exponential), or 'Customized' as prior.")
     }
     if(sd.prior$param$alpha > 1 | sd.prior$param$alpha < 0){
-      stop("Error: The value of sd.prior$param$alpha is not specified as a probability.")
+      if(sd.prior$prior != "Customized"){
+        stop("Error: The value of sd.prior$param$alpha is not specified as a probability.")
+      }
     }
     
     if (model_class == "IWP") {
@@ -563,7 +567,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   }
 
   if (missing(control.family)) {
-    control.family <- list(sd_prior = list(prior = "exp", param = list(u = 1, alpha = 0.5)))
+    control.family <- list(sd.prior = list(prior = "exp", param = list(u = 1, alpha = 0.5)))
   }
 
   if (missing(control.fixed)) {
@@ -658,7 +662,8 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     boundary_samp_indexes = global_samp_indexes,
     random_samp_indexes = coef_samp_indexes,
     fixed_samp_indexes = fixed_samp_indexes,
-    family = family
+    family = family,
+    control.family = control.family
   )
   
   if(any(class(fit_result$mod) == "aghq")){

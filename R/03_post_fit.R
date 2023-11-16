@@ -20,8 +20,9 @@ summary.FitResult <- function(object) {
       }
       if((length(row.names(summary_table)) - length(theta_names)) >= 1 ){
         num_theta_family <- (length(row.names(summary_table)) - length(theta_names))
-        row.names(summary_table) <- c(theta_names, rep(paste("theta(", "family", ")", sep = ""),  num_theta_family))
+        theta_names <- c(theta_names, rep(paste("theta(", "family", ")", sep = ""),  num_theta_family))
       }
+      row.names(summary_table) <- theta_names
       print(summary_table)
       cat("\n")
     }
@@ -293,3 +294,97 @@ extract_mean_interval_given_samps <- function(samps, level = 0.95) {
   result$mean <- as.numeric(apply(samples, MARGIN = 1, mean))
   result
 }
+
+
+
+
+#' Obtain the posterior summary of a hyper-parameter in the fitted model
+#' 
+#' @param object The fitted object from the function `model_fit`.
+#' @param component The component of the hyper-parameter that you want to show. By default this is `NULL`, indicating the family.sd is of interest.
+#' @param h For PSD, the unit of predictive step to consider, by default is set to `NULL`, indicating the result is using the same `h` as in the model fitting.
+#' @param theta_logprior The log prior function used on the selected hyper-parameter. By default is `NULL`, and the default Exponential prior will be used.
+#' @export
+hyper_summary <- function(object, component = NULL, h = NULL, theta_logprior = NULL){
+  postsigma <- NULL
+  
+  if(is.null(theta_logprior)){
+    theta_logprior <- function(theta,prior_alpha, prior_u) {
+      lambda <- -log(prior_alpha)/prior_u
+      log(lambda/2) - lambda * exp(-theta/2) - theta/2
+    }
+  }
+  priorfunc <- function(x,prior_alpha, prior_u) exp(theta_logprior(x,prior_alpha, prior_u))
+  priorfuncsigma <- function(x,prior_alpha, prior_u) (2/x) * exp(theta_logprior(-2*log(x), prior_alpha, prior_u))
+  
+  if(any(class(object$mod) == "aghq")){
+    if(is.null(component)){
+      if(object$family != "Gaussian"){
+        stop("There is no family SD in the fitted model. Please indicate which component of the hyper-parameter that you want to show in `component`.")
+      }
+      theta_marg <- object$mod$marginals[[length(object$instances) + 1]]
+      if(nrow(theta_marg) <= 2){
+        stop("The number of quadrature points is too small, please use aghq_k >= 3.")
+      }
+      logpostsigma <- compute_pdf_and_cdf(theta_marg,list(totheta = function(x) -2*log(x),fromtheta = function(x) exp(-x/2)),interpolation = 'spline')
+      postsigma <- data.frame(SD = logpostsigma$transparam, 
+                                  post = logpostsigma$pdf_transparam,
+                                  prior = priorfuncsigma(logpostsigma$transparam, prior_alpha = object$control.family$sd.prior$param$alpha, prior_u = object$control.family$sd.prior$param$u))
+    }
+    else{
+      for (i in 1:length(object$instances)) {
+        instance <- object$instances[[i]]
+        if(instance@smoothing_var == component){
+          theta_marg <- object$mod$marginals[[i]]
+          if(nrow(theta_marg) <= 2){
+            stop("The number of quadrature points is too small, please use aghq_k >= 3.")
+          }
+          logpostsigma <- compute_pdf_and_cdf(theta_marg,list(totheta = function(x) -2*log(x),fromtheta = function(x) exp(-x/2)),interpolation = 'spline')
+          postsigma <- data.frame(SD = logpostsigma$transparam, 
+                                  post = logpostsigma$pdf_transparam,
+                                  prior = priorfuncsigma(logpostsigma$transparam, prior_alpha = object$control.family$sd.prior$param$alpha, prior_u = object$control.family$sd.prior$param$u))
+          
+          if(is.null(h)){
+            if(!is.null(instance@sd.prior$h)){
+              h <- instance@sd.prior$h
+            }
+          }
+          if(!is.null(h)){
+            if(class(instance) == "IWP"){
+              p <- instance@order
+              correction <- sqrt((h^((2 * p) - 1)) / (((2 * p) - 1) * (factorial(p - 1)^2)))
+            }
+            else if(class(instance) == "sGP"){
+              correction <- 0
+              for (j in 1:instance@m) {
+                correction <- correction + compute_d_step_sGPsd(d = h, a = (j*instance@a))
+              }
+            }
+            else{
+              stop("PSD is currently on defined on IWP and sGP, please specify h = NULL for other type of random effect")
+            }
+            postsigmaPSD <- data.frame(PSD = postsigma$SD * correction, 
+                                       post.PSD = postsigma$post / correction,
+                                       prior.PSD = postsigma$prior / correction)
+            
+            postsigma <- cbind(postsigma, postsigmaPSD)
+          }
+          
+        }
+      }
+      
+    }
+  }
+  else{
+    stop("The function `hyper_plot` currently only supports model fittd with `method = aghq`.")
+  }
+  
+  return(postsigma)
+}
+
+
+
+
+
+
+
