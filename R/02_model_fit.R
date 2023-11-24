@@ -356,7 +356,12 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     if(is.null(smoothing_var)){
       smoothing_var <- rand_effect$x
       if(is.null(smoothing_var)){
-        stop("Error: The covariate name must be specified as smoothing_var or x.")
+        if(toString(rand_effect[[2]]) %in% names(data)){
+          smoothing_var <- rand_effect[[2]]
+        }
+        else{
+          stop("Error: Cannot find the specified the covaraite name. The covariate name should be specified as smoothing_var or x, or the first argument in f().")
+        }
       }
     }
     model_class <- rand_effect$model
@@ -482,6 +487,14 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instances[[length(instances) + 1]] <- instance
     }
     else if (model_class == "sGP"){
+      if(!"a" %in% names(rand_effect)){
+        if("freq" %in% names(rand_effect)){
+          rand_effect$a <- (2*pi)*eval(rand_effect$freq, envir = envir)
+        }
+        else if("period" %in% names(rand_effect)){
+          rand_effect$a <- (2*pi)/eval(rand_effect$period, envir = envir)
+        }
+      }
       a <- eval(rand_effect$a, envir = envir)
       k <- eval(rand_effect$k, envir = envir)
       initial_location <- eval(rand_effect$initial_location, envir = envir)
@@ -557,7 +570,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   if (!family_is_coxph & !family_is_cc) {
     Xf0 <- matrix(1, nrow = nrow(data), ncol = 1)
     design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf0
-    fixed_effects_names <- c(fixed_effects_names, "Intercept")
+    fixed_effects_names <- c(fixed_effects_names, "intercept")
   }
   # For fixed effects
   for (fixed_effect in fixed_effects) {
@@ -663,7 +676,8 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     random_samp_indexes = coef_samp_indexes,
     fixed_samp_indexes = fixed_samp_indexes,
     family = family,
-    control.family = control.family
+    control.family = control.family,
+    control.fixed = control.fixed
   )
   
   if(any(class(fit_result$mod) == "aghq")){
@@ -685,16 +699,16 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
 
 
 
-#' @title Bayesian Model Averaging for Hierarchical Models
+#' @title Repeated fitting Bayesian Hierarchical Models for a sequence of values of the looping variable.
 #'
 #' @description
-#' Performs Bayesian Model Averaging over a sequence of values for a specified variable within a hierarchical model.
+#' Performs repeated model fitting over a sequence of values for a specified variable within a hierarchical model.
 #' This function repeatedly fits a model for each value of the looping variable, compiles the log marginal likelihoods,
 #' and calculates the posterior probabilities for the variable's values.
 #'
-#' @param loop_var_name A string specifying the name of the variable to loop over.
-#' @param loop_var_values A numeric vector containing the values to loop over for the specified variable.
-#' @param prior_func A function that takes the specified loop_var_values and returns the values of the prior for the loop variable.
+#' @param loop_holder A string specifying the name of the variable to loop over. The default value is `LOOP`.
+#' @param loop_values A numeric vector containing the values to loop over for the specified variable.
+#' @param prior_func A function that takes the specified loop_values and returns the values of the prior for the loop variable.
 #' By default, it is a uniform prior which returns a constant value, indicating equal probability for all values.
 #' @param parallel Logical, indicating whether or not to run the model fitting in parallel (default is FALSE).
 #' @param cores The number of cores to use for parallel execution (default is detected cores - 1).
@@ -704,7 +718,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
 #' and posterior probabilities.
 #' 
 #' @export
-model_fit_BMA <- function(loop_var_name, loop_var_values, prior_func = function(x){1}, parallel = FALSE, cores = (parallel::detectCores() - 1), ...) {
+model_fit_loop <- function(loop_holder = "LOOP", loop_values, prior_func = function(x){1}, parallel = FALSE, cores = (parallel::detectCores() - 1), ...) {
   update_arg <- function(arg_list, arg_name, arg_value) {
     if (arg_name %in% names(arg_list)) {
       arg_list[[arg_name]] <- arg_value
@@ -726,15 +740,15 @@ model_fit_BMA <- function(loop_var_name, loop_var_values, prior_func = function(
   
   run_model <- function(loop_var) {
     safe_env <- new.env(parent = parent.frame())
-    assign(loop_var_name, loop_var, envir = safe_env)
+    assign(loop_holder, loop_var, envir = safe_env)
     args_list$envir <- safe_env
-    args_list <- update_arg(args_list, loop_var_name, loop_var)
+    args_list <- update_arg(args_list, loop_holder, loop_var)
     model_fit_result <- do.call("model_fit", args_list)
     model_fit_result$mod$normalized_posterior$lognormconst
   }
   
   if (!parallel) {
-    for (loop_var in loop_var_values) {
+    for (loop_var in loop_values) {
       log_ml <- c(log_ml, run_model(loop_var))
     }
   } else {
@@ -745,17 +759,17 @@ model_fit_BMA <- function(loop_var_name, loop_var_values, prior_func = function(
         library(pkg, character.only = TRUE)
       })
     })
-    parallel::clusterExport(cl, list("update_arg", "model_fit", "args_list", "loop_var_name", "prior_func"), envir = environment())
-    log_ml <- parallel::parLapply(cl, loop_var_values, run_model)
+    parallel::clusterExport(cl, list("update_arg", "model_fit", "args_list", "loop_holder", "prior_func"), envir = environment())
+    log_ml <- parallel::parLapply(cl, loop_values, run_model)
     parallel::stopCluster(cl)
   }
   
-  log_joint <- unlist(log_ml) + log(prior_func(loop_var_values))
+  log_joint <- unlist(log_ml) + log(prior_func(loop_values))
   log_joint <- log_joint - max(log_joint)
   post <- exp(log_joint)
-  integral_result <- sfsmisc::integrate.xy(loop_var_values, post)
+  integral_result <- sfsmisc::integrate.xy(loop_values, post)
   post <- post / integral_result
-  data.frame(var = loop_var_values, post = post, log_ml = unlist(log_ml))
+  data.frame(var = loop_values, post = post, log_ml = unlist(log_ml))
   
 }
 

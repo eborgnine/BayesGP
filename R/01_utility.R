@@ -1,3 +1,18 @@
+# Function defined to enhance the usability for users on IDEs.
+f <- function(smoothing_var, model, sd.prior = NULL, boundary.prior = NULL, ...) {
+  # Capture the full call
+  mc <- match.call(expand.dots = TRUE)
+  
+  # Replace the first argument with the function name
+  mc[[1]] <- as.name("f")
+  
+  # Replace smoothing_var with its unevaluated form
+  mc$smoothing_var <- substitute(smoothing_var)
+  
+  # Return the modified call
+  return(mc)
+}
+
 parse_formula <- function(formula) {
   components <- as.list(attributes(terms(formula))$ variables)
   fixed_effects <- list()
@@ -24,7 +39,8 @@ setClass("IWP", slots = list(
 
 # Create a class for sGP using S4
 setClass("sGP", slots = list(
-  response_var = "name", smoothing_var = "name", a = "numeric",
+  response_var = "name", smoothing_var = "name", 
+  a = "numeric", freq = "numeric", period = "numeric",
   m = "numeric", k = "numeric",
   knots = "numeric", observed_x = "numeric", sd.prior = "list",
   boundary.prior = "list", data = "data.frame", X = "matrix",
