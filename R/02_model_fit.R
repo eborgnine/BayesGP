@@ -5,7 +5,7 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
   else{
     cpp = customized_template
   }
-  # Family types: Gaussian - 0, Poisson - 1, Binomial - 2, Coxph - 3, CaseCrossover - 4
+  # Family types: Gaussian - 0, Poisson - 1, Binomial - 2, Coxph - 3, CaseCrossover - 4, prior.only - -2.
   if (family == "Gaussian") {
     family_type <- 0
   } else if (family == "Poisson") {
@@ -21,6 +21,10 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
       stop("In order to use the customized family: please input the name of the complied cpp template as `customized_template`.")
     }
     family_type <- -1
+  }
+  else if(family == "none"){
+    warning("The family option is set to `none`, and only prior samples will be produced.")
+    family_type <- -2
   }
   
   # Containers for random effects

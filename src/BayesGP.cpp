@@ -209,6 +209,10 @@ Type objective_function<Type>::operator() ()
         }
 }
 
+  else if (family_type == -2){
+    ll = 0;
+  }
+
   REPORT(ll);
 
   // Log prior on W
