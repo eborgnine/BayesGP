@@ -274,94 +274,8 @@ setMethod("local_poly", signature = "IWP", function(object) {
   smoothing_var <- object@smoothing_var
   refined_x <- (object@data)[[smoothing_var]] - initial_location
   p <- object@order
-  # TODO: refactor this part
-  if (min(knots) >= 0) {
-    # The following part only works with all-positive knots
-    dif <- diff(knots)
-    nn <- length(refined_x)
-    n <- length(knots)
-    D <- matrix(0, nrow = nn, ncol = n - 1)
-    for (j in 1:nn) {
-      for (i in 1:(n - 1)) {
-        if (refined_x[j] <= knots[i]) {
-          D[j, i] <- 0
-        } else if (refined_x[j] <= knots[i + 1] & refined_x[j] >= knots[i]) {
-          D[j, i] <- (1 / factorial(p)) * (refined_x[j] - knots[i])^p
-        } else {
-          k <- 1:p
-          D[j, i] <- sum((dif[i]^k) * ((refined_x[j] - knots[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
-        }
-      }
-    }
-  } else if (max(knots) <= 0) {
-    # Handle the negative part only
-    refined_x_neg <- refined_x
-    refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
-    knots_neg <- knots
-    knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
-    dif <- diff(knots_neg)
-    nn <- length(refined_x_neg)
-    n <- length(knots_neg)
-    D <- matrix(0, nrow = nn, ncol = n - 1)
-    for (j in 1:nn) {
-      for (i in 1:(n - 1)) {
-        if (refined_x_neg[j] <= knots_neg[i]) {
-          D[j, i] <- 0
-        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
-          D[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
-        } else {
-          k <- 1:p
-          D[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
-        }
-      }
-    }
-  } else {
-    # Handle the negative part
-    refined_x_neg <- refined_x
-    refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
-    knots_neg <- knots
-    knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
-    dif <- diff(knots_neg)
-    nn <- length(refined_x_neg)
-    n <- length(knots_neg)
-    D1 <- matrix(0, nrow = nn, ncol = n - 1)
-    for (j in 1:nn) {
-      for (i in 1:(n - 1)) {
-        if (refined_x_neg[j] <= knots_neg[i]) {
-          D1[j, i] <- 0
-        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
-          D1[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
-        } else {
-          k <- 1:p
-          D1[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
-        }
-      }
-    }
-
-    # Handle the positive part
-    refined_x_pos <- refined_x
-    refined_x_pos <- ifelse(refined_x > 0, refined_x, 0)
-    knots_pos <- knots
-    knots_pos <- unique(sort(ifelse(knots > 0, knots, 0)))
-    dif <- diff(knots_pos)
-    nn <- length(refined_x_pos)
-    n <- length(knots_pos)
-    D2 <- matrix(0, nrow = nn, ncol = n - 1)
-    for (j in 1:nn) {
-      for (i in 1:(n - 1)) {
-        if (refined_x_pos[j] <= knots_pos[i]) {
-          D2[j, i] <- 0
-        } else if (refined_x_pos[j] <= knots_pos[i + 1] & refined_x_pos[j] >= knots_pos[i]) {
-          D2[j, i] <- (1 / factorial(p)) * (refined_x_pos[j] - knots_pos[i])^p
-        } else {
-          k <- 1:p
-          D2[j, i] <- sum((dif[i]^k) * ((refined_x_pos[j] - knots_pos[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
-        }
-      }
-    }
-    D <- cbind(D1, D2)
-  }
-  D
+  D <- local_poly_helper(knots, refined_x, p)
+  D # Local poly design matrix
 })
 
 setGeneric("global_poly", function(object) {
@@ -422,6 +336,26 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
   }
 })
 
+get_local_poly <- function(knots, refined_x, p) {
+  dif <- diff(knots)
+  nn <- length(refined_x)
+  n <- length(knots)
+  D <- matrix(0, nrow = nn, ncol = n - 1)
+  for (j in 1:nn) {
+    for (i in 1:(n - 1)) {
+      if (refined_x[j] <= knots[i]) {
+        D[j, i] <- 0
+      } else if (refined_x[j] <= knots[i + 1] & refined_x[j] >= knots[i]) {
+        D[j, i] <- (1 / factorial(p)) * (refined_x[j] - knots[i])^p
+      } else {
+        k <- 1:p
+        D[j, i] <- sum((dif[i]^k) * ((refined_x[j] - knots[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
+      }
+    }
+  }
+  D # Local poly design matrix
+}
+
 #' Constructing and evaluating the local O-spline basis (design matrix)
 #'
 #' @param knots A vector of knots used to construct the O-spline basis, first knot should be viewed as "0",
@@ -435,91 +369,25 @@ setMethod("compute_weights_precision", signature = "IWP", function(object) {
 #' local_poly(knots = c(0, 0.2, 0.4, 0.6, 0.8), refined_x = seq(0, 0.8, by = 0.1), p = 2)
 #' @export
 local_poly_helper <- function(knots, refined_x, p = 2) {
-  # TODO: refactor this part
   if (min(knots) >= 0) {
-    # The following part only works with all-positive knots
-    dif <- diff(knots)
-    nn <- length(refined_x)
-    n <- length(knots)
-    D <- matrix(0, nrow = nn, ncol = n - 1)
-    for (j in 1:nn) {
-      for (i in 1:(n - 1)) {
-        if (refined_x[j] <= knots[i]) {
-          D[j, i] <- 0
-        } else if (refined_x[j] <= knots[i + 1] & refined_x[j] >= knots[i]) {
-          D[j, i] <- (1 / factorial(p)) * (refined_x[j] - knots[i])^p
-        } else {
-          k <- 1:p
-          D[j, i] <- sum((dif[i]^k) * ((refined_x[j] - knots[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
-        }
-      }
-    }
+    # The case of all-positive knots
+    D <- get_local_poly(knots, refined_x, p)
   } else if (max(knots) <= 0) {
     # Handle the negative part only
-    refined_x_neg <- refined_x
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
-    knots_neg <- knots
     knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
-    dif <- diff(knots_neg)
-    nn <- length(refined_x_neg)
-    n <- length(knots_neg)
-    D <- matrix(0, nrow = nn, ncol = n - 1)
-    for (j in 1:nn) {
-      for (i in 1:(n - 1)) {
-        if (refined_x_neg[j] <= knots_neg[i]) {
-          D[j, i] <- 0
-        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
-          D[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
-        } else {
-          k <- 1:p
-          D[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
-        }
-      }
-    }
+    D <- get_local_poly(knots_neg, refined_x_neg, p)
   } else {
     # Handle the negative part
-    refined_x_neg <- refined_x
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
-    knots_neg <- knots
     knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
-    dif <- diff(knots_neg)
-    nn <- length(refined_x_neg)
-    n <- length(knots_neg)
-    D1 <- matrix(0, nrow = nn, ncol = n - 1)
-    for (j in 1:nn) {
-      for (i in 1:(n - 1)) {
-        if (refined_x_neg[j] <= knots_neg[i]) {
-          D1[j, i] <- 0
-        } else if (refined_x_neg[j] <= knots_neg[i + 1] & refined_x_neg[j] >= knots_neg[i]) {
-          D1[j, i] <- (1 / factorial(p)) * (refined_x_neg[j] - knots_neg[i])^p
-        } else {
-          k <- 1:p
-          D1[j, i] <- sum((dif[i]^k) * ((refined_x_neg[j] - knots_neg[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
-        }
-      }
-    }
+    D1 <- get_local_poly(knots_neg, refined_x_neg, p)
 
     # Handle the positive part
-    refined_x_pos <- refined_x
     refined_x_pos <- ifelse(refined_x > 0, refined_x, 0)
-    knots_pos <- knots
     knots_pos <- unique(sort(ifelse(knots > 0, knots, 0)))
-    dif <- diff(knots_pos)
-    nn <- length(refined_x_pos)
-    n <- length(knots_pos)
-    D2 <- matrix(0, nrow = nn, ncol = n - 1)
-    for (j in 1:nn) {
-      for (i in 1:(n - 1)) {
-        if (refined_x_pos[j] <= knots_pos[i]) {
-          D2[j, i] <- 0
-        } else if (refined_x_pos[j] <= knots_pos[i + 1] & refined_x_pos[j] >= knots_pos[i]) {
-          D2[j, i] <- (1 / factorial(p)) * (refined_x_pos[j] - knots_pos[i])^p
-        } else {
-          k <- 1:p
-          D2[j, i] <- sum((dif[i]^k) * ((refined_x_pos[j] - knots_pos[i + 1])^(p - k)) / (factorial(k) * factorial(p - k)))
-        }
-      }
-    }
+    D2 <- get_local_poly(knots_pos, refined_x_pos, p)
+    
     D <- cbind(D1, D2)
   }
   D # Local poly design matrix
