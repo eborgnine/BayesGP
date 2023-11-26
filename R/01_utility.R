@@ -371,22 +371,22 @@ get_local_poly <- function(knots, refined_x, p) {
 local_poly_helper <- function(knots, refined_x, p = 2) {
   if (min(knots) >= 0) {
     # The case of all-positive knots
-    D -> get_local_poly(knots, refined_x, p)
+    D <- get_local_poly(knots, refined_x, p)
   } else if (max(knots) <= 0) {
     # Handle the negative part only
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
     knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
-    D -> get_local_poly(knots_neg, refined_x_neg, p)
+    D <- get_local_poly(knots_neg, refined_x_neg, p)
   } else {
     # Handle the negative part
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
     knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
-    D1 -> get_local_poly(knots_neg, refined_x_neg, p)
+    D1 <- get_local_poly(knots_neg, refined_x_neg, p)
 
     # Handle the positive part
     refined_x_pos <- ifelse(refined_x > 0, refined_x, 0)
     knots_pos <- unique(sort(ifelse(knots > 0, knots, 0)))
-    D2 -> get_local_poly(knots_pos, refined_x_pos, p)
+    D2 <- get_local_poly(knots_pos, refined_x_pos, p)
     
     D <- cbind(D1, D2)
   }
