@@ -4,7 +4,7 @@
 \alias{sample_fixed_effect}
 \title{Extract the posterior samples from the fitted model for the target fixed variables.}
 \usage{
-sample_fixed_effect(model_fit, variables, M)
+sample_fixed_effect(model_fit, variables)
 }
 \arguments{
 \item{model_fit}{The result from model_fit().}

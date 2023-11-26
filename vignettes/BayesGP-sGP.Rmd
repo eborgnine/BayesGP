@@ -83,7 +83,7 @@ To fit the sGP model with BayesGP, specify `model = "sGP"`, and then specify the
 mod <- model_fit(formula = y ~ f(x = year, 
                                     model = "sGP", 
                                     a = 2*pi/10, k = 30,
-                                    sd.prior = list(prior = "exp", param = prior_SD)) + 
+                                    sd.prior = list(prior = "exp", param = prior_SD, h = 2)) + 
                                f(x = x, 
                                     model = "IID", 
                                     sd.prior = list(prior = "exp", param = 0.5)),
@@ -96,7 +96,7 @@ mod <- model_fit(formula = y ~ f(x = year,
 The fitted sGP model is presented below:
 
 ```{r}
-plot(mod)
+summary(mod)
 ```
 
 We can similarly use `predict` to evaluate the effect at different locations:

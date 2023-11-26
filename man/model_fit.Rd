@@ -14,9 +14,13 @@ model_fit(
   aghq_k = 4,
   size = NULL,
   cens = NULL,
+  weight = NULL,
+  strata = NULL,
   M = 3000,
   customized_template = NULL,
-  option_list = list()
+  Customized_RE = NULL,
+  option_list = list(),
+  envir = parent.frame()
 )
 }
 \arguments{
@@ -38,7 +42,13 @@ model_fit(
 
 \item{customized_template}{The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `BayesGP` will be used.}
 
+\item{Customized_RE}{The list that contains the compute_B and compute_P functions for the customized random effect. By default, this is NULL and there is not customized random effect in the model.}
+
 \item{option_list}{A list that controls the details of the inference algorithm, by default is an empty list.}
+
+\item{envir}{The environment in which the formula and other expressions are to be evaluated. 
+Defaults to `parent.frame()`, which refers to the environment from which the function was called.
+This allows the function to access variables that are defined in the calling function's scope.}
 }
 \value{
 A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for

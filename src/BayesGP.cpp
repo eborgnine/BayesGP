@@ -1,3 +1,4 @@
+#define TMB_LIB_INIT R_init_BayesGP
 #include <TMB.hpp>
 #include <string>
 using namespace tmbutils;
@@ -39,10 +40,12 @@ Type objective_function<Type>::operator() ()
   // (For example: the Gaussian noise variance when family = "Gaussian")
   DATA_STRUCT(u, list_Scalar_from_R);       // Pc prior, u param
   DATA_STRUCT(alpha, list_Scalar_from_R);   // Pc prior, alpha param
-  DATA_STRUCT(betaprec, list_Scalar_from_R);// For boundary, beta ~iid N(0,1/betaprec)
+  DATA_STRUCT(betaprec, list_Scalar_from_R);// For boundary, beta ~iid N(betamean,1/betaprec)
+  DATA_STRUCT(betamean, list_Scalar_from_R);// For boundary, beta ~iid N(betamean,1/betaprec)
 
   // For fixed effects
   DATA_STRUCT(beta_fixed_prec, list_Scalar_from_R);
+  DATA_STRUCT(beta_fixed_mean, list_Scalar_from_R);
   DATA_STRUCT(Xf, list_SparseMatrix_from_R);
 
   DATA_VECTOR(y); //response variable
@@ -206,6 +209,10 @@ Type objective_function<Type>::operator() ()
         }
 }
 
+  else if (family_type == -2){
+    ll = 0;
+  }
+
   REPORT(ll);
 
   // Log prior on W
@@ -213,7 +220,7 @@ Type objective_function<Type>::operator() ()
   // Cross product (for each RE and its boundary, and for fixed effect)
   // For Random Effects:
   for (int i = 0; i < X.size(); i++){
-    Type bb = (beta(i) * beta(i)).sum();
+    Type bb = ((beta(i) - betamean(i)) * (beta(i) - betamean(i))).sum();
     lpW += -0.5 * betaprec(i) * bb; // Beta part (boundary condition)
   }
 
@@ -226,7 +233,7 @@ Type objective_function<Type>::operator() ()
 
   // For Fixed Effects;
   for (int i = 0; i < beta_fixed.size(); i++){
-    Type bbf = (beta_fixed(i) * beta_fixed(i)).sum(); // Fixed effect
+    Type bbf = ((beta_fixed(i) - beta_fixed_mean(i)) * (beta_fixed(i) - beta_fixed_mean(i))).sum(); // Fixed effect
     lpW += -0.5 * beta_fixed_prec(i) * bbf; //
   }
 

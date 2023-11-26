@@ -13,8 +13,8 @@ LinkingTo: TMB, RcppEigen
 Imports: TMB, RcppEigen
 Depends: 
     R (>= 2.10),
-    tidyverse,
     Matrix,
+    TMB,
     aghq
 Suggests: 
     rmarkdown,

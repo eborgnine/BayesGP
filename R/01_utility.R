@@ -1,3 +1,18 @@
+# Function defined to enhance the usability for users on IDEs.
+f <- function(smoothing_var, model, sd.prior = NULL, boundary.prior = NULL, ...) {
+  # Capture the full call
+  mc <- match.call(expand.dots = TRUE)
+  
+  # Replace the first argument with the function name
+  mc[[1]] <- as.name("f")
+  
+  # Replace smoothing_var with its unevaluated form
+  mc$smoothing_var <- substitute(smoothing_var)
+  
+  # Return the modified call
+  return(mc)
+}
+
 parse_formula <- function(formula) {
   components <- as.list(attributes(terms(formula))$ variables)
   fixed_effects <- list()
@@ -24,7 +39,8 @@ setClass("IWP", slots = list(
 
 # Create a class for sGP using S4
 setClass("sGP", slots = list(
-  response_var = "name", smoothing_var = "name", a = "numeric",
+  response_var = "name", smoothing_var = "name", 
+  a = "numeric", freq = "numeric", period = "numeric",
   m = "numeric", k = "numeric",
   knots = "numeric", observed_x = "numeric", sd.prior = "list",
   boundary.prior = "list", data = "data.frame", X = "matrix",
@@ -36,6 +52,13 @@ setClass("sGP", slots = list(
 setClass("IID", slots = list(
   response_var = "name", smoothing_var = "name", sd.prior = "list",
   data = "data.frame", B = "matrix", P = "matrix"
+))
+
+# Create a class for Customized using S4
+setClass("Customized", slots = list(
+  response_var = "name", smoothing_var = "name", sd.prior = "list",
+  data = "data.frame", B = "matrix", P = "matrix",
+  compute_B = "function", compute_P = "function"
 ))
 
 Compute_Q_sB <- function(a,k,region, accuracy = 0.01, boundary = TRUE){
@@ -146,7 +169,6 @@ Compute_Q_sB <- function(a,k,region, accuracy = 0.01, boundary = TRUE){
   Q <- (a^4)*G + C + (a^2)*ss(M)
   Matrix::forceSymmetric(Q)
 }
-
 Compute_B_sB <- function(x, a, k, region, boundary = TRUE){
   if(boundary){
     B_basis <- suppressWarnings(fda::create.bspline.basis(rangeval = c(min(region),max(region)),
@@ -166,7 +188,6 @@ Compute_B_sB <- function(x, a, k, region, boundary = TRUE){
   Bsin <- apply(Bmatrix, 2, function(x) x*sin_matrix)
   cbind(Bcos, Bsin,Bmatrix)
 }
-
 Compute_B_sB_helper <- function(refined_x, a, k, m, region, boundary = TRUE, initial_location = NULL){
   if(is.null(initial_location)){
     initial_location <- min(refined_x)
@@ -188,6 +209,10 @@ setMethod("compute_B", signature = "IID", function(object) {
   x <- as.factor((object@data)[[smoothing_var]])
   B <- model.matrix(~ -1 + x)
   B
+})
+setMethod("compute_B", signature = "Customized", function(object) {
+  smoothing_var <- object@smoothing_var
+  object@compute_B((object@data)[[smoothing_var]])
 })
 setMethod("compute_B", signature = "sGP", function(object) {
   smoothing_var <- object@smoothing_var
@@ -215,6 +240,10 @@ setMethod("compute_P", signature = "IID", function(object) {
   x <- (object@data)[[smoothing_var]]
   num_factor <- length(unique(x))
   diag(nrow = num_factor, ncol = num_factor)
+})
+setMethod("compute_P", signature = "Customized", function(object) {
+  x <- (object@data)[[object@smoothing_var]]
+  object@compute_P(x)
 })
 setMethod("compute_P", signature = "sGP", function(object) {
   smoothing_var <- object@smoothing_var
@@ -537,14 +566,14 @@ global_poly_helper_sGP <- function(refined_x, a, m, initial_location = NULL) {
 
 #' Construct prior based on d-step prediction SD (for IWP)
 #'
-#' @param prior A list that contains a and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.
+#' @param prior A list that contains alpha and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = alpha}.
 #' @param d A numeric value for the prediction step.
 #' @param p An integer for the order of IWP.
-#' @return A list that contains a and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
+#' @return A list that contains alpha and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = alpha}, that yields the ideal prior on the d-step SD.
 #' @export
 prior_conversion_IWP <- function(d, prior, p) {
   Cp <- (d^((2 * p) - 1)) / (((2 * p) - 1) * (factorial(p - 1)^2))
-  prior_q <- list(a = prior$a, u = (prior$u * (1 / sqrt(Cp))))
+  prior_q <- list(alpha = prior$alpha, u = (prior$u * (1 / sqrt(Cp))))
   prior_q
 }
 
@@ -560,18 +589,18 @@ compute_d_step_sGPsd <- function(d,a){
 
 #' Construct prior based on d-step prediction SD (for sGP)
 #'
-#' @param prior A list that contains a and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = a}.
+#' @param prior A list that contains alpha and u. This specifies the target prior on the d-step SD \eqn{\sigma(d)}, such that \eqn{P(\sigma(d) > u) = alpha}.
 #' @param d A numeric value for the prediction step.
 #' @param a The frequency parameter of the sGP.
 #' @param m The number of harmonics that should be considered, by default m = 1 represents only the sGP.
-#' @return A list that contains a and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = a}, that yields the ideal prior on the d-step SD.
+#' @return A list that contains alpha and u. The prior for the smoothness parameter \eqn{\sigma} such that \eqn{P(\sigma > u) = alpha}, that yields the ideal prior on the d-step SD.
 #' @export
 prior_conversion_sGP <- function(d, prior, a, m = 1) {
   correction_factor <- 0
   for (i in 1:m) {
     correction_factor <- correction_factor + compute_d_step_sGPsd(d = d, a = (i*a))
   }
-  prior_SD <- list(u = prior$u/correction_factor, a = prior$a)
+  prior_SD <- list(u = prior$u/correction_factor, alpha = prior$alpha)
   prior_SD
 }
 

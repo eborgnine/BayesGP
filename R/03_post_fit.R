@@ -5,31 +5,40 @@ summary.FitResult <- function(object) {
     aghq_output <- capture.output(aghq_summary)
     cur_index <- grep("Here are some moments and quantiles for the transformed parameter:", aghq_output)
     cat(paste(aghq_output[1:(cur_index - 1)], collapse = "\n"))
-    cat("\nHere are some moments and quantiles for the log precision: \n")
-    cur_index <- grep("median    97.5%", aghq_output)
-    cat(paste(aghq_output[cur_index], collapse = "\n"))
     
-    summary_table <- as.matrix(aghq_summary$summarytable)
-    theta_names <- c()
-    for (instance in object$instances) {
-      theta_names <- c(theta_names, paste("theta(", toString(instance@smoothing_var), ")", sep = ""))
+    if(class(aghq_summary) == "aghqsummary"){
+      cat("\nHere are some moments and quantiles for the log precision: \n")
+      # cur_index <- grep("median    97.5%", aghq_output)
+      # cat(paste(aghq_output[cur_index], collapse = "\n"))
     }
     
-    row.names(summary_table) <- theta_names
-    print(summary_table)
-    cat("\n")
+    if(!is.null(aghq_summary$summarytable)){
+      summary_table <- as.matrix(aghq_summary$summarytable)
+      theta_names <- c()
+      for (instance in object$instances) {
+        theta_names <- c(theta_names, paste("theta(", toString(instance@smoothing_var), ")", sep = ""))
+      }
+      if((length(row.names(summary_table)) - length(theta_names)) >= 1 ){
+        num_theta_family <- (length(row.names(summary_table)) - length(theta_names))
+        theta_names <- c(theta_names, rep(paste("theta(", "family", ")", sep = ""),  num_theta_family))
+      }
+      row.names(summary_table) <- theta_names
+      print(summary_table)
+      cat("\n")
+    }
   }
   # samps <- aghq::sample_marginal(object$mod, M = 3000)
   samps <- object$samps
-  fixed_samps <- samps$samps[unlist(object$fixed_samp_indexes), , drop = F]
-  fixed_summary <- apply(X = fixed_samps,MARGIN = 1, summary)
-  colnames(fixed_summary) <- names(object$fixed_samp_indexes)
-  fixed_sd <- apply(X = fixed_samps, MARGIN = 1, sd)
-  fixed_summary <- rbind(fixed_summary, fixed_sd)
-  rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
-
-  cat("Here are some moments and quantiles for the fixed effects: \n\n")
-  print(t(fixed_summary[c(2:5, 7), ]))
+  if(length(unlist(object$fixed_samp_indexes)) >= 1){
+    fixed_samps <- samps$samps[unlist(object$fixed_samp_indexes), , drop = F]
+    fixed_summary <- apply(X = fixed_samps,MARGIN = 1, summary)
+    colnames(fixed_summary) <- names(object$fixed_samp_indexes)
+    fixed_sd <- apply(X = fixed_samps, MARGIN = 1, sd)
+    fixed_summary <- rbind(fixed_summary, fixed_sd)
+    rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
+    cat("Here are some moments and quantiles for the fixed effects: \n\n")
+    print(t(fixed_summary[c(2:5, 7), , drop = FALSE]))
+  }
 }
 
 #' To predict the GP component in the fitted model, at the locations specified in `newdata`. 
@@ -64,7 +73,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, incl
         refined_x_final <- sort(newdata[[variable]] - IWP@initial_location) # initialize according to `initial_location`
       }
       if(include.intercept){
-        intercept_samps <- samps$samps[object$fixed_samp_indexes[["Intercept"]], , drop = F]
+        intercept_samps <- samps$samps[object$fixed_samp_indexes[["intercept"]], , drop = F]
       } else{
         intercept_samps <- NULL
       }
@@ -88,7 +97,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, incl
         refined_x_final <- sort(newdata[[variable]] - sGP@initial_location) # initialize according to `initial_location`
       }
       if(include.intercept){
-        intercept_samps <- samps$samps[object$fixed_samp_indexes[["Intercept"]], , drop = F]
+        intercept_samps <- samps$samps[object$fixed_samp_indexes[["intercept"]], , drop = F]
       } else{
         intercept_samps <- NULL
       }
@@ -147,7 +156,7 @@ plot.FitResult <- function(object) {
 #' @param model_fit The result from model_fit().
 #' @param variables A vector of names of the target fixed variables to sample.
 #' @export
-sample_fixed_effect <- function(model_fit, variables, M){
+sample_fixed_effect <- function(model_fit, variables){
   samps <- model_fit$samps$samps
   index <- model_fit$fixed_samp_indexes[variables]
   selected_samps <- t(samps[unlist(index), ,drop = FALSE])
@@ -285,3 +294,240 @@ extract_mean_interval_given_samps <- function(samps, level = 0.95) {
   result$mean <- as.numeric(apply(samples, MARGIN = 1, mean))
   result
 }
+
+
+
+
+#' Obtain the posterior density of a variance parameter in the fitted model
+#' 
+#' @param object The fitted object from the function `model_fit`.
+#' @param component The component of the variance parameter that you want to show. By default this is `NULL`, indicating the family.sd is of interest.
+#' @param h For PSD, the unit of predictive step to consider, by default is set to `NULL`, indicating the result is using the same `h` as in the model fitting.
+#' @param theta_logprior The log prior function used on the selected variance parameter. By default is `NULL`, and the default Exponential prior will be used.
+#' @param MCMC_samps_only For model fitted with MCMC, whether only the posterior samples are needed.
+#' @export
+var_density <- function(object, component = NULL, h = NULL, theta_logprior = NULL, MCMC_samps_only = FALSE){
+  postsigma <- NULL
+  
+  if(is.null(theta_logprior)){
+    theta_logprior <- function(theta,prior_alpha, prior_u) {
+      lambda <- -log(prior_alpha)/prior_u
+      log(lambda/2) - lambda * exp(-theta/2) - theta/2
+    }
+  }
+  priorfunc <- function(x,prior_alpha, prior_u) exp(theta_logprior(x,prior_alpha, prior_u))
+  priorfuncsigma <- function(x,prior_alpha, prior_u) (2/x) * exp(theta_logprior(-2*log(x), prior_alpha, prior_u))
+  
+  if(any(class(object$mod) == "aghq")){
+    if(is.null(component)){
+      if(object$family != "Gaussian"){
+        stop("There is no family SD in the fitted model. Please indicate which component of the var-parameter that you want to show in `component`.")
+      }
+      theta_marg <- object$mod$marginals[[length(object$instances) + 1]]
+      if(nrow(theta_marg) <= 2){
+        stop("The number of quadrature points is too small, please use aghq_k >= 3.")
+      }
+      logpostsigma <- compute_pdf_and_cdf(theta_marg,list(totheta = function(x) -2*log(x),fromtheta = function(x) exp(-x/2)),interpolation = 'spline')
+      postsigma <- data.frame(SD = logpostsigma$transparam, 
+                                  post = logpostsigma$pdf_transparam,
+                                  prior = priorfuncsigma(logpostsigma$transparam, prior_alpha = object$control.family$sd.prior$param$alpha, prior_u = object$control.family$sd.prior$param$u))
+    }
+    else{
+      for (i in 1:length(object$instances)) {
+        instance <- object$instances[[i]]
+        if(instance@smoothing_var == component){
+          theta_marg <- object$mod$marginals[[i]]
+          if(nrow(theta_marg) <= 2){
+            stop("The number of quadrature points is too small, please use aghq_k >= 3.")
+          }
+          logpostsigma <- compute_pdf_and_cdf(theta_marg,list(totheta = function(x) -2*log(x),fromtheta = function(x) exp(-x/2)),interpolation = 'spline')
+          postsigma <- data.frame(SD = logpostsigma$transparam, 
+                                  post = logpostsigma$pdf_transparam,
+                                  prior = priorfuncsigma(logpostsigma$transparam, prior_alpha = object$instances[[i]]@sd.prior$param$alpha, prior_u = object$instances[[i]]@sd.prior$param$u))
+          
+          if(is.null(h)){
+            if(!is.null(instance@sd.prior$h)){
+              h <- instance@sd.prior$h
+            }
+          }
+          if(!is.null(h)){
+            if(class(instance) == "IWP"){
+              p <- instance@order
+              correction <- sqrt((h^((2 * p) - 1)) / (((2 * p) - 1) * (factorial(p - 1)^2)))
+            }
+            else if(class(instance) == "sGP"){
+              correction <- 0
+              for (j in 1:instance@m) {
+                correction <- correction + compute_d_step_sGPsd(d = h, a = (j*instance@a))
+              }
+            }
+            else{
+              stop("PSD is currently on defined on IWP and sGP, please specify h = NULL for other type of random effect")
+            }
+            postsigmaPSD <- data.frame(PSD = postsigma$SD * correction, 
+                                       post.PSD = postsigma$post / correction,
+                                       prior.PSD = postsigma$prior / correction)
+            
+            postsigma <- cbind(postsigma, postsigmaPSD)
+          }
+          
+        }
+      }
+      
+    }
+  }
+  
+  else if(any(class(object$mod) == "stanfit")){
+    sigmaPSD_marg_samps <- NULL
+    if(is.null(component)){
+      if(object$family != "Gaussian"){
+        stop("There is no family SD in the fitted model. Please indicate which component of the var-parameter that you want to show in `component`.")
+      }
+      theta_marg_samps <- object$samps$thet[[length(object$instances) + 1]]
+      sigma_marg_samps <- exp(-0.5*theta_marg_samps)
+      sigma_marg_density <- density(sigma_marg_samps)
+      postsigma <- data.frame(SD = sigma_marg_density$x, 
+                              post = sigma_marg_density$y,
+                              prior = priorfuncsigma(sigma_marg_density$x, prior_alpha = object$control.family$sd.prior$param$alpha, prior_u = object$control.family$sd.prior$param$u))
+    }
+    else{
+      for (i in 1:length(object$instances)) {
+        instance <- object$instances[[i]]
+        if(instance@smoothing_var == component){
+          theta_marg_samps <- object$samps$thet[[i]]
+          sigma_marg_samps <- exp(-0.5*theta_marg_samps)
+          sigma_marg_density <- density(sigma_marg_samps)
+          postsigma <- data.frame(SD = sigma_marg_density$x, 
+                                  post = sigma_marg_density$y,
+                                  prior = priorfuncsigma(sigma_marg_density$x, prior_alpha = object$instances[[i]]@sd.prior$param$alpha, prior_u = object$instances[[i]]@sd.prior$param$u))
+          if(is.null(h)){
+            if(!is.null(instance@sd.prior$h)){
+              h <- instance@sd.prior$h
+            }
+          }
+          if(!is.null(h)){
+            if(class(instance) == "IWP"){
+              p <- instance@order
+              correction <- sqrt((h^((2 * p) - 1)) / (((2 * p) - 1) * (factorial(p - 1)^2)))
+            }
+            else if(class(instance) == "sGP"){
+              correction <- 0
+              for (j in 1:instance@m) {
+                correction <- correction + compute_d_step_sGPsd(d = h, a = (j*instance@a))
+              }
+            }
+            else{
+              stop("PSD is currently on defined on IWP and sGP, please specify h = NULL for other type of random effect")
+            }
+            sigmaPSD_marg_samps <- sigma_marg_samps * correction
+            postsigmaPSD <- data.frame(PSD = postsigma$SD * correction, 
+                                       post.PSD = postsigma$post / correction,
+                                       prior.PSD = postsigma$prior / correction)
+            
+            postsigma <- cbind(postsigma, postsigmaPSD)
+          }
+          
+        }
+      }
+    }
+    if(MCMC_samps_only == TRUE){
+      return(list(sigmaPSD_marg_samps = sigmaPSD_marg_samps, sigma_marg_samps = sigma_marg_samps))
+    }
+  }
+  
+  else{
+    stop("The function `var_density` currently only supports model fittd with `method = aghq`.")
+  }
+  postsigma <- postsigma[order(postsigma$SD),]
+  return(postsigma)
+}
+
+
+#' Obtain the posterior and prior density of all the parameters in the fitted model
+#' 
+#' @param object The fitted object from the function `model_fit`.
+#' @export
+para_density <- function(object){
+  result_list <- list()
+  for (fixed_name in names(object$fixed_samp_indexes)) {
+    samps <- sample_fixed_effect(object, variables = fixed_name)
+    fixed_density <- density(samps)
+    result_list[[fixed_name]] <- data.frame(effect = fixed_density$x, post = fixed_density$y)
+  }
+  
+  for (random_name in names(object$random_samp_indexes)) {
+    result_list[[random_name]] <- var_density(object = object, component = random_name)
+  }
+  
+  if(object$family == "Gaussian"){
+    result_list[["family_var"]] <- var_density(object = object)
+  }
+  
+  return(result_list)
+}
+
+
+#' Obtain the posterior summary table for all the parameters in the fitted model
+#' @param quantiles The specified quantile to display the posterior summary, default is c(0.025, 0.975).
+#' @param digits The significant digits to be kept in the result, default is 3.
+#' @export
+post_table <- function(object, quantiles = c(0.025, 0.975), digits = 3){
+  all_density <- para_density(object)
+  all_cdf <- list()
+  compute_cdf <- function(x, y){
+    new_data_frame <- list(x = x)
+    new_data_frame$cdf <- cumsum(y * c(diff(x), 0))
+    new_data_frame
+  }
+  result_table <- c("name", "median", paste0("q", unlist(strsplit(toString(quantiles), split = ", "))), "prior", "prior:P1", "prior:P2")
+  for (name in names(object$fixed_samp_indexes)) {
+    all_cdf[[name]] <- compute_cdf(x = all_density[[name]]$effect, y = all_density[[name]]$post)
+    to_add <- c(name, all_cdf[[name]]$x[max(which(all_cdf[[name]]$cdf <= 0.5))])
+    for (q in quantiles) {
+      to_add <- c(to_add, all_cdf[[name]]$x[max(which(all_cdf[[name]]$cdf <= q))])
+    }
+    to_add <- c(to_add, "Normal", object$control.fixed[[name]]$mean, 1/object$control.fixed[[name]]$prec)
+    result_table <- rbind(result_table, to_add)
+  } 
+  
+  for (name in names(object$random_samp_indexes)) {
+    if("PSD" %in% names(all_density[[name]])){
+      all_cdf[[name]] <- compute_cdf(x = all_density[[name]]$PSD, y = all_density[[name]]$post.PSD)
+      print_name <- paste0(name, " (PSD)")
+    }
+    else{
+      all_cdf[[name]] <- compute_cdf(x = all_density[[name]]$SD, y = all_density[[name]]$post)
+      print_name <- paste0(name, " (SD)")
+    }
+    to_add <- c(print_name, all_cdf[[name]]$x[max(which(all_cdf[[name]]$cdf <= 0.5))])
+    for (q in quantiles) {
+      to_add <- c(to_add, all_cdf[[name]]$x[max(which(all_cdf[[name]]$cdf <= q))])
+    }
+    for (i in 1:length(object$instances)) {
+      if(name == object$instances[[i]]@smoothing_var){
+        param <- object$instances[[i]]@sd.prior$param
+      }
+    }
+    object$instances
+    to_add <- c(to_add, "Exponential", param$u, param$alpha)
+    result_table <- rbind(result_table, to_add)
+  }
+  
+  if("family_var" %in% names(all_density)){
+    all_cdf[["family_var"]] <- compute_cdf(x = all_density[["family_var"]]$SD, y = all_density[["family_var"]]$post)
+    to_add <- c("family_var", all_cdf[["family_var"]]$x[max(which(all_cdf[["family_var"]]$cdf <= 0.5))])
+    for (q in quantiles) {
+      to_add <- c(to_add, all_cdf[["family_var"]]$x[max(which(all_cdf[["family_var"]]$cdf <= q))])
+    }
+    to_add <- c(to_add, "Exponential", object$control.family$sd.prior$param$u, object$control.family$sd.prior$param$alpha)
+    result_table <- rbind(result_table, to_add)
+  }
+  result_table <- data.frame(unname(result_table))
+  result_table_names <- unlist(unname(result_table)[1,])
+  result_table <- (type.convert(result_table[-1,], as.is = TRUE))
+  result_table <- data.frame(lapply(result_table, function(y) if(is.numeric(y)) round(y, digits) else y)) 
+  colnames(result_table) <- result_table_names
+  result_table
+}
+
+
