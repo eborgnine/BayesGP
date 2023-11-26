@@ -22,6 +22,7 @@ knitr::knit_hooks$set(margins = function(before, options, envir) {
 ```{r setup}
 options(warn=-1)
 library(BayesGP)
+library(tidyverse)
 ```
 
 # COVID-19 Example
@@ -69,7 +70,7 @@ We can use the `predict` function to obtain the posterior summary of $f$ or its 
 For the function $f$:
 ```{r warning=FALSE}
 predict_f <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 615, by = 0.1)))
-predict_f %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
+predict_f %>% ggplot(aes(x = t)) + geom_line(aes(y = mean), lty = "solid") +
   geom_line(aes(y = plower), lty = "dashed") +
   geom_line(aes(y = pupper), lty = "dashed") +
   theme_classic() + xlim(c(605,615)) + ylim(0,6)
@@ -79,7 +80,7 @@ predict_f %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
 For the first derivative:
 ```{r warning=FALSE}
 predict_f1st <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 615, by = 0.1)), degree = 1)
-predict_f1st %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
+predict_f1st %>% ggplot(aes(x = t)) + geom_line(aes(y = mean), lty = "solid") +
   geom_line(aes(y = plower), lty = "dashed") +
   geom_line(aes(y = pupper), lty = "dashed") +
   theme_classic() + xlim(c(605,615)) + ylim(c(-3,5))
@@ -89,7 +90,7 @@ predict_f1st %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
 For the second derivative:
 ```{r warning=FALSE}
 predict_f2nd <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 617, by = 0.1)), degree = 2)
-predict_f2nd %>% ggplot(aes(x = x)) + geom_line(aes(y = mean), lty = "solid") +
+predict_f2nd %>% ggplot(aes(x = t)) + geom_line(aes(y = mean), lty = "solid") +
   geom_line(aes(y = plower), lty = "dashed") +
   geom_line(aes(y = pupper), lty = "dashed") +
   theme_classic()
