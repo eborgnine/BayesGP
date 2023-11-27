@@ -226,9 +226,9 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
       control_day_strata <- which(strata == s & case == 0)
       
       # Initialize the control_day matrix for this strata
-      M <- length(case_day_strata)
+      num_strata <- length(case_day_strata)
       N <- max_N
-      control_day_matrix <- matrix(0, nrow = M, ncol = N + 1)
+      control_day_matrix <- matrix(0, nrow = num_strata, ncol = N + 1)
       
       # Populate the control_day matrix
       for (i in seq_along(case_day_strata)) {

@@ -1,4 +1,5 @@
-# Function defined to enhance the usability for users on IDEs.
+#' Function defined to enhance the usability for users on IDEs.
+#' @export
 f <- function(smoothing_var, model, sd.prior = NULL, boundary.prior = NULL, ...) {
   # Capture the full call
   mc <- match.call(expand.dots = TRUE)
@@ -486,6 +487,7 @@ dgTMatrix_wrapper <- function(matrix) {
   result
 }
 
+#' @export
 get_default_option_list_MCMC <- function(option_list = list()){
   default_options <- list(chains = 1, cores = 1, init = "random", seed = 123, warmup = 10000)
   required_names <- names(default_options)
