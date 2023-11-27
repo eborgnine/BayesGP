@@ -415,7 +415,14 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     if (model_class == "IWP") {
       order <- eval(rand_effect$order, envir = envir)
       knots <- eval(rand_effect$knots, envir = envir)
-      k <- eval(rand_effect$k, envir = envir)
+      if("k" %in% names(rand_effect)){
+        k <- eval(rand_effect$k, envir = envir)
+      }
+      else{
+        if("knots" %in% names(rand_effect)){
+          k <- length(knots)
+        }
+      }
       initial_location <- eval(rand_effect$initial_location, envir = envir)
       if (!(is.null(k)) && k < 3) {
         stop("Error: parameter <k> in the random effect part should be >= 3.")
@@ -439,6 +446,9 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
         } else {
           knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = k)))
         }
+      }
+      else{
+        knots <- knots - initial_location
       }
       observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
       if (is.null(boundary.prior)) {
