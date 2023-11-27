@@ -22,7 +22,6 @@ knitr::knit_hooks$set(margins = function(before, options, envir) {
 ```{r setup}
 options(warn=-1)
 library(BayesGP)
-library(tidyverse)
 ```
 
 # COVID-19 Example
@@ -70,74 +69,24 @@ We can use the `predict` function to obtain the posterior summary of $f$ or its 
 For the function $f$:
 ```{r warning=FALSE}
 predict_f <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 615, by = 0.1)))
-predict_f %>% ggplot(aes(x = t)) + geom_line(aes(y = mean), lty = "solid") +
-  geom_line(aes(y = plower), lty = "dashed") +
-  geom_line(aes(y = pupper), lty = "dashed") +
-  theme_classic() + xlim(c(605,615)) + ylim(0,6)
+matplot(x = predict_f[,1], y = predict_f[,2:4], type = 'l', ylab = "f", xlab = "t", col = c("grey", "grey", "black"), lty = c("dashed", "dashed", "solid"))
 ```
 
 
 For the first derivative:
 ```{r warning=FALSE}
 predict_f1st <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 615, by = 0.1)), degree = 1)
-predict_f1st %>% ggplot(aes(x = t)) + geom_line(aes(y = mean), lty = "solid") +
-  geom_line(aes(y = plower), lty = "dashed") +
-  geom_line(aes(y = pupper), lty = "dashed") +
-  theme_classic() + xlim(c(605,615)) + ylim(c(-3,5))
+matplot(x = predict_f1st[,1], y = predict_f1st[,2:4], type = 'l', ylab = "f'", xlab = "t", col = c("grey", "grey", "black"), lty = c("dashed", "dashed", "solid"))
 ```
 
 
 For the second derivative:
 ```{r warning=FALSE}
 predict_f2nd <- predict(fit_result, variable = "t", newdata = data.frame(t = seq(from = 605, to = 617, by = 0.1)), degree = 2)
-predict_f2nd %>% ggplot(aes(x = t)) + geom_line(aes(y = mean), lty = "solid") +
-  geom_line(aes(y = plower), lty = "dashed") +
-  geom_line(aes(y = pupper), lty = "dashed") +
-  theme_classic()
+matplot(x = predict_f2nd[,1], y = predict_f2nd[,2:4], type = 'l', ylab = "f''", xlab = "t", col = c("grey", "grey", "black"), lty = c("dashed", "dashed", "solid"))
 ```
 
 
-
-## Inference with R-INLA
-
-A similar model with an IWP component could be fitted using the software [R-INLA](https://www.r-inla.org/). Instead of using an O-Spline approximation, the R-INLA software uses the augmented space approach to fit the IWP component. The R-INLA software implements two possible choices of the IWP model: the first order IWP (`crw1`) or the second order IWP (`crw2`). 
-
-Since the third IWP is not compatible with the R-INLA software, here we use the second order IWP as an example:
-
-To fit the model and make inference of the function $f$:
-
-```{r}
-if(requireNamespace("INLA", quietly=TRUE)) {
-
-  inla_result <- INLA::inla(formula = new_deaths~-1 + weekdays1 + weekdays2 + weekdays3 + weekdays4 + weekdays5 + weekdays6 + f(t, model = "crw2", constr = F, hyper = list(prec = list(prior = "pc.prec", param = c(0.02, 0.5)))), data = covid_canada, family = "Poisson", control.compute=list(config = TRUE))
-  
-  inla_result$summary.random$t %>% filter(ID >= 0) %>% ggplot(aes(x = ID)) + geom_line(aes(y = mean), lty = "solid") +
-  geom_line(aes(y = `0.025quant`), lty = "dashed") +
-  geom_line(aes(y = `0.975quant`), lty = "dashed") +
-  theme_classic() + xlim(c(605,615)) + ylim(0,6)
-  
-}
-
-```
-
-
-
-To make inference of the first derivative $f'$:
-
-```{r}
-if(requireNamespace("INLA", quietly=TRUE)) {
-
-  inla_result$summary.random$t %>% filter(ID <= 0) %>% mutate(ID = -ID) %>% 
-  ggplot(aes(x = ID)) + geom_line(aes(y = mean), lty = "solid") +
-  geom_line(aes(y = `0.025quant`), lty = "dashed") +
-  geom_line(aes(y = `0.975quant`), lty = "dashed") +
-  theme_classic() + xlim(c(605,615)) + ylim(c(-3,5))
-  
-}
-```
-
-
-The inferential result of the function $f$ using R-INLA is comparable to the result using `BayesGP`  The inference of derivative, on the other hand, tends to be more wiggly using R-INLA. This difference is due to the lower order IWP used in the model. The highest order IWP that R-INLA accommodates is the second order IWP, which only assumes the function to be once differentiable, whereas the third order IWP used by `BayesGP` assumes the function to be twice differentiable.
 
 
 

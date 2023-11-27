@@ -4,10 +4,12 @@
 \alias{post_table}
 \title{Obtain the posterior summary table for all the parameters in the fitted model}
 \usage{
-post_table(object, quantiles = c(0.025, 0.975))
+post_table(object, quantiles = c(0.025, 0.975), digits = 3)
 }
 \arguments{
 \item{quantiles}{The specified quantile to display the posterior summary, default is c(0.025, 0.975).}
+
+\item{digits}{The significant digits to be kept in the result, default is 3.}
 }
 \description{
 Obtain the posterior summary table for all the parameters in the fitted model
