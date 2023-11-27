@@ -34,10 +34,9 @@ There are currently two implemented models in `BayesGP` that use the partial lik
 
 With `BayesGP`, one can specify the argument `family` to `"cc"`, `"casecrossover"` or `"CaseCrossover"` to fit a case-crossover model.
 
-Here we will use the simulated dataset from the `casecrossover` package:
+Here we will use a simulated dataset:
 ```{r}
-if(requireNamespace("casecrossover", quietly=TRUE)) {
-data <- as.data.frame(casecrossover::sim1data)
+data <- as.data.frame(sim1data)
 data$exposure <- data$exposure
 mod <- model_fit(formula = case ~ f(x = exposure, 
                                     model = "IWP", 
@@ -49,7 +48,7 @@ mod <- model_fit(formula = case ~ f(x = exposure,
                  weight = NULL,
                  data = data,
                  method = "aghq")
-}
+
 ```
 
 To take a look at its result:

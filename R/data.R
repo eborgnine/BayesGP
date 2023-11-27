@@ -16,3 +16,10 @@
 #' @source Dong, E., H. Du, and L. Gardner (2020). An interactive web-based dashboard to track
 #' covid-19 in real time. \emph{The Lancet infectious diseases 20 (5)}, 533–534.
 "covid_canada"
+
+
+#' A simulated dataset from the case-crossover model.
+#'
+#'
+#' @format 'sim1data'
+#' A data frame with 3596 rows and 6 columns.

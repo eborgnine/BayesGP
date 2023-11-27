@@ -90,7 +90,5 @@ matplot(x = predict_f2nd[,1], y = predict_f2nd[,2:4], type = 'l', ylab = "f''", 
 
 
 
-
-
  
 
