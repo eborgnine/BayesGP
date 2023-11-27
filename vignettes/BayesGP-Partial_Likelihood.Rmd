@@ -36,7 +36,8 @@ With `BayesGP`, one can specify the argument `family` to `"cc"`, `"casecrossover
 
 Here we will use the simulated dataset from the `casecrossover` package:
 ```{r}
-data <- as.data.frame(sim1data)
+if(requireNamespace("casecrossover", quietly=TRUE)) {
+data <- as.data.frame(casecrossover::sim1data)
 data$exposure <- data$exposure
 mod <- model_fit(formula = case ~ f(x = exposure, 
                                     model = "IWP", 
@@ -48,6 +49,7 @@ mod <- model_fit(formula = case ~ f(x = exposure,
                  weight = NULL,
                  data = data,
                  method = "aghq")
+}
 ```
 
 To take a look at its result:
