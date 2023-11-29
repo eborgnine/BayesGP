@@ -219,9 +219,13 @@ Type objective_function<Type>::operator() ()
   Type lpW = 0;
   // Cross product (for each RE and its boundary, and for fixed effect)
   // For Random Effects:
+  int cur_dim_sum_boundary = 0;
   for (int i = 0; i < X.size(); i++){
-    Type bb = ((beta(i) - betamean(i)) * (beta(i) - betamean(i))).sum();
-    lpW += -0.5 * betaprec(i) * bb; // Beta part (boundary condition)
+    for (int j = 0; j < X(i).cols(); j++){
+      Type bb = (beta(i)(j) - betamean(cur_dim_sum_boundary + j)) * (beta(i)(j) - betamean(cur_dim_sum_boundary + j));
+      lpW += -0.5 * betaprec(cur_dim_sum_boundary + j) * bb; // Beta part (boundary condition)
+    }
+    cur_dim_sum_boundary += X(i).cols();
   }
 
   for (int i = 0; i < P.size(); i++){

@@ -23,7 +23,7 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     family_type <- -1
   }
   else if(family == "none"){
-    warning("The family option is set to `none`, and only prior samples will be produced.")
+    message("The family option is set to `none`, and only prior samples will be produced.")
     family_type <- -2
   }
   
@@ -51,14 +51,18 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     # For each random effects
     if (class(instance) == "IWP") {
       X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
-      betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
-      betamean[[length(betamean) + 1]] <- instance@boundary.prior$mean
+      for (jj in 1:length(instance@boundary.prior$prec)) {
+        betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec[jj]
+        betamean[[length(betamean) + 1]] <- instance@boundary.prior$mean[jj]
+      }
       w_count <- w_count + ncol(instance@X)
     }
     else if(class(instance) == "sGP"){
       X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
-      betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec
-      betamean[[length(betamean) + 1]] <- instance@boundary.prior$mean
+      for (jj in 1:length(instance@boundary.prior$prec)) {
+        betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec[jj]
+        betamean[[length(betamean) + 1]] <- instance@boundary.prior$mean[jj]
+      }
       w_count <- w_count + ncol(instance@X)
     }
     B[[length(B) + 1]] <- dgTMatrix_wrapper(instance@B)
@@ -438,10 +442,11 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       if("k" %in% names(rand_effect)){
         k <- eval(rand_effect$k, envir = envir)
       }
+      else if("knots" %in% names(rand_effect)){
+        k <- length(knots)
+      }
       else{
-        if("knots" %in% names(rand_effect)){
-          k <- length(knots)
-        }
+        k <- NULL
       }
       initial_location <- eval(rand_effect$initial_location, envir = envir)
       if (!(is.null(k)) && k < 3) {
@@ -460,7 +465,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       # the parameter k
       initialized_smoothing_var <- data[[smoothing_var]] - initial_location
       if (is.null(knots)) {
-        default_k <- 5
+        default_k <- 30
         if (is.null(k)) {
           knots <- unique(sort(seq(from = min(initialized_smoothing_var), to = max(initialized_smoothing_var), length.out = default_k))) # should be length.out
         } else {
@@ -479,6 +484,12 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       }
       if(is.null(boundary.prior$mean)){
         boundary.prior$mean <- 0
+      }
+      if(length(boundary.prior$mean) != (order-1)){
+        boundary.prior$mean <- rep(boundary.prior$mean[1], length.out = (order-1))
+      }
+      if(length(boundary.prior$prec) != (order-1)){
+        boundary.prior$prec <- rep(boundary.prior$prec[1], length.out = (order-1))
       }
       instance <- new(model_class,
         response_var = response_var,
@@ -574,6 +585,12 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       }
       if(is.null(boundary.prior$mean)){
         boundary.prior$mean <- 0
+      }
+      if(length(boundary.prior$mean) != 2){
+        boundary.prior$mean <- rep(boundary.prior$mean[1], length.out = (2))
+      }
+      if(length(boundary.prior$prec) != 2){
+        boundary.prior$prec <- rep(boundary.prior$prec[1], length.out = (2))
       }
       boundary <- TRUE
       if ("boundary" %in% names(rand_effect)){
