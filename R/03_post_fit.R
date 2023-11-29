@@ -49,12 +49,13 @@ summary.FitResult <- function(object) {
 #' @param include.intercept A logical variable specifying whether the intercept should be accounted when doing the prediction. The default is TRUE. For Coxph model, this 
 #' variable will be forced to FALSE.
 #' @param only.samples A logical variable indicating whether only the posterior samples are required. The default is FALSE, and the summary of posterior samples will be reported.
+#' @param quantiles A numeric vector of quantiles that predict.FitResult will produce, the default is c(0.025, 0.5, 0.975).
+#' @param boundary.condition A string specifies whether the boundary.condition should be considered in the prediction, should be one of c("Yes", "No", "Only"). The default option is "Yes".
 #' @export
-predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, include.intercept = TRUE, only.samples = FALSE) {
+predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, include.intercept = TRUE, only.samples = FALSE, quantiles = c(0.025, 0.5, 0.975), boundary.condition = "Yes") {
   if(object$family == "Coxph" || object$family == "coxph"| object$family == "cc" | object$family == "casecrossover" | object$family == "CaseCrossover"){
     include.intercept = FALSE ## No intercept for coxph model
   }
-  # samps <- aghq::sample_marginal(object$mod, M = 3000)
   samps <- object$samps
   for (instance in object$instances) {
     if(sum(names(object$random_samp_indexes) == variable) >= 2){
@@ -63,7 +64,13 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, incl
       stop("The specified variable cannot be found in the fitted model, please check the name.")
     }
     global_samps <- samps$samps[object$boundary_samp_indexes[[variable]], , drop = F]
+    if(boundary.condition == "No"){
+      global_samps <- NULL
+    }
     coefsamps <- samps$samps[object$random_samp_indexes[[variable]], ]
+    if(boundary.condition == "Only"){
+      coefsamps <- 0 * coefsamps
+    }
     if (instance@smoothing_var == variable && class(instance) == "IWP") {
       IWP <- instance
       ## Step 2: Initialization
@@ -82,7 +89,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, incl
         samps = coefsamps, global_samps = global_samps,
         knots = IWP@knots,
         refined_x = refined_x_final,
-        p = IWP@order, ## check this order or p?
+        p = IWP@order,
         degree = degree,
         intercept_samps = intercept_samps
       )
@@ -116,11 +123,12 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, incl
     }
   }
   if(only.samples){
+    names(f)[-1] <- paste0("samp", 1:(ncol(f)-1))
     return(f)
   }
   ## Step 4: summarize the prediction
-  fpos <- extract_mean_interval_given_samps(f)
-  names(fpos)[1] <- variable
+  fpos <- extract_mean_interval_given_samps(f, quantiles = quantiles)
+  names(fpos)[names(fpos) == "x"] <- variable
   return(fpos)
 }
 
@@ -131,7 +139,7 @@ plot.FitResult <- function(object) {
     if (class(instance) == "IWP") {
       predict_result <- predict(object, variable = as.character(instance@smoothing_var))
       matplot(
-        x = predict_result[,1], y = predict_result[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1),
+        x = predict_result[,1], y = predict_result[, c("q0.5", "q0.025", "q0.975")], lty = c(1, 2, 2), lwd = c(2, 1, 1),
         col = "black", type = "l",
         ylab = "effect", xlab = as.character(instance@smoothing_var)
       )
@@ -139,7 +147,7 @@ plot.FitResult <- function(object) {
     if (class(instance) == "sGP") {
       predict_result <- predict(object, variable = as.character(instance@smoothing_var))
       matplot(
-        x = predict_result[,1], y = predict_result[, c("mean", "plower", "pupper")], lty = c(1, 2, 2), lwd = c(2, 1, 1),
+        x = predict_result[,1], y = predict_result[, c("q0.5", "q0.025", "q0.975")], lty = c(1, 2, 2), lwd = c(2, 1, 1),
         col = "black", type = "l",
         ylab = "effect", xlab = as.character(instance@smoothing_var)
       )
@@ -280,17 +288,22 @@ compute_post_fun_sGP <- function(samps, global_samps = NULL, k, refined_x, a, re
 #'
 #' @param samps Posterior samples of f or its derivative, with the first column being evaluation
 #' points x. This can be yielded by `compute_post_fun_IWP` function.
-#' @param level The level to compute the pointwise interval.
+#' @param level The level to compute the pointwise interval. Ignored when quantiles are provided.
+#' @param quantiles A numeric vector of quantiles to be computed.
 #' @return A dataframe with a column for evaluation locations x, and posterior mean and pointwise
 #' intervals at that set of locations.
 #' @export
-extract_mean_interval_given_samps <- function(samps, level = 0.95) {
+extract_mean_interval_given_samps <- function(samps, level = 0.95, quantiles = NULL) {
   x <- samps[, 1]
   samples <- samps[, -1]
   result <- data.frame(x = x)
-  alpha <- 1 - level
-  result$plower <- as.numeric(apply(samples, MARGIN = 1, quantile, p = (alpha / 2)))
-  result$pupper <- as.numeric(apply(samples, MARGIN = 1, quantile, p = (level + (alpha / 2))))
+  if(is.null(quantiles)){
+    alpha <- 1 - level
+    quantiles <- c((alpha / 2), 0.5, (level + (alpha / 2)))
+  }
+  for (q in quantiles) {
+    result[[paste0("q",q)]] <- as.numeric(apply(samples, MARGIN = 1, quantile, p = q))
+  }
   result$mean <- as.numeric(apply(samples, MARGIN = 1, mean))
   result
 }
@@ -327,7 +340,7 @@ var_density <- function(object, component = NULL, h = NULL, theta_logprior = NUL
       if(nrow(theta_marg) <= 2){
         stop("The number of quadrature points is too small, please use aghq_k >= 3.")
       }
-      logpostsigma <- compute_pdf_and_cdf(theta_marg,list(totheta = function(x) -2*log(x),fromtheta = function(x) exp(-x/2)),interpolation = 'spline')
+      logpostsigma <- aghq::compute_pdf_and_cdf(theta_marg,list(totheta = function(x) -2*log(x),fromtheta = function(x) exp(-x/2)),interpolation = 'spline')
       postsigma <- data.frame(SD = logpostsigma$transparam, 
                                   post = logpostsigma$pdf_transparam,
                                   prior = priorfuncsigma(logpostsigma$transparam, prior_alpha = object$control.family$sd.prior$param$alpha, prior_u = object$control.family$sd.prior$param$u))
@@ -340,7 +353,7 @@ var_density <- function(object, component = NULL, h = NULL, theta_logprior = NUL
           if(nrow(theta_marg) <= 2){
             stop("The number of quadrature points is too small, please use aghq_k >= 3.")
           }
-          logpostsigma <- compute_pdf_and_cdf(theta_marg,list(totheta = function(x) -2*log(x),fromtheta = function(x) exp(-x/2)),interpolation = 'spline')
+          logpostsigma <- aghq::compute_pdf_and_cdf(theta_marg,list(totheta = function(x) -2*log(x),fromtheta = function(x) exp(-x/2)),interpolation = 'spline')
           postsigma <- data.frame(SD = logpostsigma$transparam, 
                                   post = logpostsigma$pdf_transparam,
                                   prior = priorfuncsigma(logpostsigma$transparam, prior_alpha = object$instances[[i]]@sd.prior$param$alpha, prior_u = object$instances[[i]]@sd.prior$param$u))

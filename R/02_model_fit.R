@@ -293,14 +293,34 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     )
     ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
     default_option_list <- get_default_option_list_MCMC(option_list = option_list)
-    mod <- tmbstan::tmbstan(
-      ff,
-      chains = default_option_list$chains,
-      cores = default_option_list$cores,
-      iter = default_option_list$warmup + M,
-      warmup = default_option_list$warmup,
-      seed = default_option_list$seed
-    )
+    if(default_option_list$silent == TRUE){
+      sink(tempfile())
+      mod <- tmbstan::tmbstan(
+        ff,
+        chains = default_option_list$chains,
+        cores = default_option_list$cores,
+        iter = default_option_list$warmup + M,
+        warmup = default_option_list$warmup,
+        seed = default_option_list$seed,
+        silent = default_option_list$silent,
+        laplace = default_option_list$laplace
+      )
+      sink()
+      
+    }
+    else{
+      mod <- tmbstan::tmbstan(
+        ff,
+        chains = default_option_list$chains,
+        cores = default_option_list$cores,
+        iter = default_option_list$warmup + M,
+        warmup = default_option_list$warmup,
+        seed = default_option_list$seed,
+        silent = default_option_list$silent,
+        laplace = default_option_list$laplace
+      )
+    }
+
   }
   return(list(mod = mod, w_count = w_count))
 }

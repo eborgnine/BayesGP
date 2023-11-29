@@ -489,7 +489,7 @@ dgTMatrix_wrapper <- function(matrix) {
 
 #' @export
 get_default_option_list_MCMC <- function(option_list = list()){
-  default_options <- list(chains = 1, cores = 1, init = "random", seed = 123, warmup = 10000)
+  default_options <- list(chains = 1, cores = 1, init = "random", seed = 123, warmup = 10000, silent = TRUE, laplace = FALSE)
   required_names <- names(default_options)
   for (name in required_names) {
     if(! name %in% names(option_list)){
