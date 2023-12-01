@@ -2,6 +2,7 @@
 
 S3method(plot,FitResult)
 S3method(predict,FitResult)
+S3method(print,summary.FitResult)
 S3method(summary,FitResult)
 export(compute_post_fun_IWP)
 export(compute_post_fun_sGP)

@@ -6,6 +6,7 @@ summary.FitResult <- function(object) {
   return(output)
 }
 
+#' @export
 #' @method print summary.FitResult
 print.summary.FitResult <- function(summary.FitResult) {
   class(summary.FitResult) <- "data.frame"
@@ -14,7 +15,7 @@ print.summary.FitResult <- function(summary.FitResult) {
   cat(output, sep = "\n")
   cat("For Normal prior, P1 is its mean and P2 is its variance. \n")
   cat("For Exponential prior, prior is specified as P(theta > P1) = P2. \n")
-  return(output)
+  invisible(summary.FitResult)
 }
 
 
