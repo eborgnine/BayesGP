@@ -1,58 +1,35 @@
 #' @export
+#' @method summary FitResult
 summary.FitResult <- function(object) {
-  if(any(class(object$mod) == "aghq")){
-    aghq_summary <- summary(object$mod)
-    aghq_output <- capture.output(aghq_summary)
-    cur_index <- grep("Here are some moments and quantiles for the transformed parameter:", aghq_output)
-    cat(paste(aghq_output[1:(cur_index - 1)], collapse = "\n"))
-    
-    if(class(aghq_summary) == "aghqsummary"){
-      cat("\nHere are some moments and quantiles for the log precision: \n")
-      # cur_index <- grep("median    97.5%", aghq_output)
-      # cat(paste(aghq_output[cur_index], collapse = "\n"))
-    }
-    
-    if(!is.null(aghq_summary$summarytable)){
-      summary_table <- as.matrix(aghq_summary$summarytable)
-      theta_names <- c()
-      for (instance in object$instances) {
-        theta_names <- c(theta_names, paste("theta(", toString(instance@smoothing_var), ")", sep = ""))
-      }
-      if((length(row.names(summary_table)) - length(theta_names)) >= 1 ){
-        num_theta_family <- (length(row.names(summary_table)) - length(theta_names))
-        theta_names <- c(theta_names, rep(paste("theta(", "family", ")", sep = ""),  num_theta_family))
-      }
-      row.names(summary_table) <- theta_names
-      print(summary_table)
-      cat("\n")
-    }
-  }
-  # samps <- aghq::sample_marginal(object$mod, M = 3000)
-  samps <- object$samps
-  if(length(unlist(object$fixed_samp_indexes)) >= 1){
-    fixed_samps <- samps$samps[unlist(object$fixed_samp_indexes), , drop = F]
-    fixed_summary <- apply(X = fixed_samps,MARGIN = 1, summary)
-    colnames(fixed_summary) <- names(object$fixed_samp_indexes)
-    fixed_sd <- apply(X = fixed_samps, MARGIN = 1, sd)
-    fixed_summary <- rbind(fixed_summary, fixed_sd)
-    rownames(fixed_summary)[nrow(fixed_summary)] <- "sd"
-    cat("Here are some moments and quantiles for the fixed effects: \n\n")
-    print(t(fixed_summary[c(2:5, 7), , drop = FALSE]))
-  }
+  output <- post_table(object)
+  class(output) <- "summary.FitResult"
+  return(output)
 }
+
+#' @method print summary.FitResult
+print.summary.FitResult <- function(summary.FitResult) {
+  class(summary.FitResult) <- "data.frame"
+  output <- capture.output(print(summary.FitResult))
+  cat("Here are some posterior/prior summaries for the parameters: \n")
+  cat(output, sep = "\n")
+  cat("For Normal prior, P1 is its mean and P2 is its variance. \n")
+  cat("For Exponential prior, prior is specified as P(theta > P1) = P2. \n")
+  return(output)
+}
+
 
 #' To predict the GP component in the fitted model, at the locations specified in `newdata`. 
 #' @param object The fitted object from the function `model_fit`.
 #' @param newdata The dataset that contains the locations to be predicted for the specified GP. Its column names must include `variable`.
 #' @param variable The name of the variable to be predicted, should be in the `newdata`.
-#' @param degree The degree of derivative that the user specifies for inference. Only applicable for a GP in the `IWP` type.
+#' @param deriv The degree of derivative that the user specifies for inference. Only applicable for a GP in the `IWP` type.
 #' @param include.intercept A logical variable specifying whether the intercept should be accounted when doing the prediction. The default is TRUE. For Coxph model, this 
 #' variable will be forced to FALSE.
 #' @param only.samples A logical variable indicating whether only the posterior samples are required. The default is FALSE, and the summary of posterior samples will be reported.
 #' @param quantiles A numeric vector of quantiles that predict.FitResult will produce, the default is c(0.025, 0.5, 0.975).
 #' @param boundary.condition A string specifies whether the boundary.condition should be considered in the prediction, should be one of c("Yes", "No", "Only"). The default option is "Yes".
 #' @export
-predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, include.intercept = TRUE, only.samples = FALSE, quantiles = c(0.025, 0.5, 0.975), boundary.condition = "Yes") {
+predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, include.intercept = TRUE, only.samples = FALSE, quantiles = c(0.025, 0.5, 0.975), boundary.condition = "Yes") {
   if(object$family == "Coxph" || object$family == "coxph"| object$family == "cc" | object$family == "casecrossover" | object$family == "CaseCrossover"){
     include.intercept = FALSE ## No intercept for coxph model
   }
@@ -75,7 +52,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, incl
       IWP <- instance
       ## Step 2: Initialization
       if (is.null(newdata)) {
-        refined_x_final <- IWP@observed_x
+        refined_x_final <- seq(from = min(IWP@observed_x), to = max(IWP@observed_x), length.out = 10000)
       } else {
         refined_x_final <- sort(newdata[[variable]] - IWP@initial_location) # initialize according to `initial_location`
       }
@@ -90,7 +67,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, degree = 0, incl
         knots = IWP@knots,
         refined_x = refined_x_final,
         p = IWP@order,
-        degree = degree,
+        degree = deriv,
         intercept_samps = intercept_samps
       )
       f[,1] <- f[,1] + IWP@initial_location
@@ -316,20 +293,20 @@ extract_mean_interval_given_samps <- function(samps, level = 0.95, quantiles = N
 #' @param object The fitted object from the function `model_fit`.
 #' @param component The component of the variance parameter that you want to show. By default this is `NULL`, indicating the family.sd is of interest.
 #' @param h For PSD, the unit of predictive step to consider, by default is set to `NULL`, indicating the result is using the same `h` as in the model fitting.
-#' @param theta_logprior The log prior function used on the selected variance parameter. By default is `NULL`, and the default Exponential prior will be used.
+#' @param theta_logprior The log prior function used on the selected variance parameter. By default is `NULL`, and the current Exponential prior will be used.
 #' @param MCMC_samps_only For model fitted with MCMC, whether only the posterior samples are needed.
 #' @export
 var_density <- function(object, component = NULL, h = NULL, theta_logprior = NULL, MCMC_samps_only = FALSE){
   postsigma <- NULL
   
   if(is.null(theta_logprior)){
-    theta_logprior <- function(theta,prior_alpha, prior_u) {
+    theta_logprior <- function(theta, prior_alpha, prior_u) {
       lambda <- -log(prior_alpha)/prior_u
       log(lambda/2) - lambda * exp(-theta/2) - theta/2
     }
   }
-  priorfunc <- function(x,prior_alpha, prior_u) exp(theta_logprior(x,prior_alpha, prior_u))
-  priorfuncsigma <- function(x,prior_alpha, prior_u) (2/x) * exp(theta_logprior(-2*log(x), prior_alpha, prior_u))
+  priorfunc <- function(x, prior_alpha, prior_u) exp(theta_logprior(x, prior_alpha, prior_u))
+  priorfuncsigma <- function(x, prior_alpha, prior_u) (2/x) * exp(theta_logprior(-2*log(x), prior_alpha, prior_u))
   
   if(any(class(object$mod) == "aghq")){
     if(is.null(component)){
@@ -453,6 +430,25 @@ var_density <- function(object, component = NULL, h = NULL, theta_logprior = NUL
   }
   postsigma <- postsigma[order(postsigma$SD),]
   return(postsigma)
+}
+
+#' Plot the posterior density of a variance parameter in the fitted model
+#' 
+#' @param object The fitted object from the function `model_fit`.
+#' @param component The component of the variance parameter that you want to show. By default this is `NULL`, indicating the family.sd is of interest.
+#' @param h For PSD, the unit of predictive step to consider, by default is set to `NULL`, indicating the result is using the same `h` as in the model fitting.
+#' @param theta_logprior The log prior function used on the selected variance parameter. By default is `NULL`, and the current Exponential prior will be used.
+#' @export
+var_plot <- function(object, component = NULL, h = NULL, theta_logprior = NULL){
+  hyper_result <- var_density(object = object, component = component, h = h, theta_logprior = theta_logprior, MCMC_samps_only = FALSE)
+  if("PSD" %in% names(hyper_result)){
+    matplot(hyper_result[,'PSD'], hyper_result[,c('post.PSD','prior.PSD')], lty=c(1,2), type = "l", xlab = "PSD", ylab = "Density")
+    legend('topright', lty=c(1,2), col=c('black','red'), legend=c('post','prior'))
+  }
+  else{
+    matplot(hyper_result[,'SD'], hyper_result[,c('post','prior')], lty=c(1,2), type = "l", xlab = "SD", ylab = "Density")
+    legend('topright', lty=c(1,2), col=c('black','red'), legend=c('post','prior'))
+  }
 }
 
 

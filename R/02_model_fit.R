@@ -77,50 +77,6 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
   # For the variance of the Gaussian family
   # From control.family, if applicable
   if (family_type == 0) {
-    
-    if (is.null(control.family$sd.prior)) {
-      control.family$sd.prior <- eval(control.family$prior, envir = envir)
-      if(is.null(control.family$sd.prior)){
-        control.family$sd.prior <- list(prior = "exp", param = list(u = 1, alpha = 0.5))
-      }
-    }
-    if (length(control.family$sd.prior) == 1){
-      if(is.numeric(control.family$sd.prior)){
-        control.family$sd.prior <- list(prior = "exp", param = list(u = as.numeric(control.family$sd.prior), alpha = 0.5))
-      }
-    } 
-    
-    if(!"prior" %in% names(control.family$sd.prior)){
-      control.family$sd.prior$prior <- "exp"
-    }
-    if(!"param" %in% names(control.family$sd.prior)){
-      stop("If sd.prior is provided as a list, it must contains a list called param.")
-    }else{
-      if(length(control.family$sd.prior$param) == 1){
-        control.family$sd.prior$param <- list(u = control.family$sd.prior$param[[1]], alpha = 0.5)
-      }
-      else{
-        control.family$sd.prior$param <- list(u = control.family$sd.prior$param$u, alpha = control.family$sd.prior$param$alpha)
-        if(is.null(control.family$sd.prior$param$alpha)){
-          warnings("The value of alpha is not provided in control.family$sd.prior$param: automatically filled with 0.5.")
-          control.family$sd.prior$param$alpha <- 0.5
-        }
-        if(is.null(control.family$sd.prior$param$u)){
-          stop("Error: The value of u is not provided in control.family$sd.prior$param.")
-        }
-      }
-    }
-    
-    if (control.family$sd.prior$prior != "exp" & control.family$sd.prior$prior != "Exp" & control.family$sd.prior$prior != "exponential" & control.family$sd.prior$prior != "Exponential" & control.family$sd.prior$prior != "Customized") {
-      stop("Error: For each random effect, control.family$sd.prior currently only supports 'exp' (exponential), or 'Customized' as prior.")
-    }
-    if(control.family$sd.prior$param$alpha > 1 | control.family$sd.prior$param$alpha < 0){
-      if(control.family$sd.prior$prior != "Customized"){
-        stop("Error: The value of control.family$sd.prior$param$alpha is not specified as a probability.")
-      }
-    }
-    
-    
     u[[length(u) + 1]] <- control.family$sd.prior$param$u
     alpha[[length(alpha) + 1]] <- control.family$sd.prior$param$alpha
   }
@@ -377,6 +333,52 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
   if(family == "casecrossover" || family == "cc" || family == "CaseCrossover"){
     family_is_cc <- TRUE
   }
+  if (missing(control.family)) {
+    control.family <- list(sd.prior = list(prior = "exp", param = list(u = 1, alpha = 0.5)))
+  }
+  if(family == "Gaussian"){
+    if (is.null(control.family$sd.prior)) {
+      control.family$sd.prior <- eval(control.family$prior, envir = envir)
+      if(is.null(control.family$sd.prior)){
+        control.family$sd.prior <- list(prior = "exp", param = list(u = 1, alpha = 0.5))
+      }
+    }
+    if (length(control.family$sd.prior) == 1){
+      if(is.numeric(control.family$sd.prior)){
+        control.family$sd.prior <- list(prior = "exp", param = list(u = as.numeric(control.family$sd.prior), alpha = 0.5))
+      }
+    } 
+    
+    if(!"prior" %in% names(control.family$sd.prior)){
+      control.family$sd.prior$prior <- "exp"
+    }
+    if(!"param" %in% names(control.family$sd.prior)){
+      stop("If sd.prior is provided as a list, it must contains a list called param.")
+    }else{
+      if(length(control.family$sd.prior$param) == 1){
+        control.family$sd.prior$param <- list(u = control.family$sd.prior$param[[1]], alpha = 0.5)
+      }
+      else{
+        control.family$sd.prior$param <- list(u = control.family$sd.prior$param$u, alpha = control.family$sd.prior$param$alpha)
+        if(is.null(control.family$sd.prior$param$alpha)){
+          warnings("The value of alpha is not provided in control.family$sd.prior$param: automatically filled with 0.5.")
+          control.family$sd.prior$param$alpha <- 0.5
+        }
+        if(is.null(control.family$sd.prior$param$u)){
+          stop("Error: The value of u is not provided in control.family$sd.prior$param.")
+        }
+      }
+    }
+    
+    if (control.family$sd.prior$prior != "exp" & control.family$sd.prior$prior != "Exp" & control.family$sd.prior$prior != "exponential" & control.family$sd.prior$prior != "Exponential" & control.family$sd.prior$prior != "Customized") {
+      stop("Error: For each random effect, control.family$sd.prior currently only supports 'exp' (exponential), or 'Customized' as prior.")
+    }
+    if(control.family$sd.prior$param$alpha > 1 | control.family$sd.prior$param$alpha < 0){
+      if(control.family$sd.prior$prior != "Customized"){
+        stop("Error: The value of control.family$sd.prior$param$alpha is not specified as a probability.")
+      }
+    }
+  }
 
   # For random effects
   for (rand_effect in rand_effects) {
@@ -501,14 +503,12 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instance@X <- global_poly(instance)[, -1, drop = FALSE]
       instance@B <- local_poly(instance)
       instance@P <- compute_weights_precision(instance)
-      instances[[length(instances) + 1]] <- instance
-      
       if(is.numeric(sd.prior$h)){
-        sd.prior$param <- prior_conversion_IWP(d = sd.prior$h, prior = sd.prior$param, p = eval(rand_effect$order, envir = envir))
+        instance@sd.prior$param <- prior_conversion_IWP(d = sd.prior$h, prior = sd.prior$param, p = eval(rand_effect$order, envir = envir))
       } else if(is.numeric(sd.prior$step)){
-        sd.prior$param <- prior_conversion_IWP(d = sd.prior$step, prior = sd.prior$param, p = eval(rand_effect$order, envir = envir))
+        instance@sd.prior$param <- prior_conversion_IWP(d = sd.prior$step, prior = sd.prior$param, p = eval(rand_effect$order, envir = envir))
       }
-      
+      instances[[length(instances) + 1]] <- instance
     } 
     else if (model_class == "IID") {
       instance <- new(model_class,
@@ -606,13 +606,12 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instance@X <- global_poly(instance)
       instance@B <- compute_B(instance)
       instance@P <- compute_P(instance)
-      instances[[length(instances) + 1]] <- instance
-      
       if(is.numeric(sd.prior$h)){
-        sd.prior$param <- prior_conversion_sGP(d = sd.prior$h, prior = sd.prior$param, a = eval(rand_effect$a, envir = envir), m = m)
+        instance@sd.prior$param <- prior_conversion_sGP(d = sd.prior$h, prior = sd.prior$param, a = eval(rand_effect$a, envir = envir), m = m)
       } else if(is.numeric(sd.prior$step)){
-        sd.prior$param <- prior_conversion_sGP(d = sd.prior$step, prior = sd.prior$param, a = eval(rand_effect$a, envir = envir), m = m)
+        instance@sd.prior$param <- prior_conversion_sGP(d = sd.prior$step, prior = sd.prior$param, a = eval(rand_effect$a, envir = envir), m = m)
       }
+      instances[[length(instances) + 1]] <- instance
     }
   }
 
@@ -628,10 +627,6 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
     Xf <- matrix(data[[fixed_effect]], nrow = nrow(data), ncol = 1)
     design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf
     fixed_effects_names <- c(fixed_effects_names, fixed_effect)
-  }
-
-  if (missing(control.family)) {
-    control.family <- list(sd.prior = list(prior = "exp", param = list(u = 1, alpha = 0.5)))
   }
 
   if (missing(control.fixed)) {
