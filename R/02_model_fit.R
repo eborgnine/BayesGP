@@ -587,10 +587,10 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
         boundary.prior$mean <- 0
       }
       if(length(boundary.prior$mean) != 2){
-        boundary.prior$mean <- rep(boundary.prior$mean[1], length.out = (2))
+        boundary.prior$mean <- rep(boundary.prior$mean[1], length.out = (2*m))
       }
       if(length(boundary.prior$prec) != 2){
-        boundary.prior$prec <- rep(boundary.prior$prec[1], length.out = (2))
+        boundary.prior$prec <- rep(boundary.prior$prec[1], length.out = (2*m))
       }
       boundary <- TRUE
       if ("boundary" %in% names(rand_effect)){
