@@ -54,6 +54,10 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
       for (jj in 1:length(instance@boundary.prior$prec)) {
         betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec[jj]
         betamean[[length(betamean) + 1]] <- instance@boundary.prior$mean[jj]
+        if(instance@boundary.prior$prec[jj] == Inf){
+          betaprec[[length(betaprec)]] = 100000
+          X[[length(X)]][,jj] <- 0
+        }
       }
       w_count <- w_count + ncol(instance@X)
     }
@@ -62,6 +66,10 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
       for (jj in 1:length(instance@boundary.prior$prec)) {
         betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec[jj]
         betamean[[length(betamean) + 1]] <- instance@boundary.prior$mean[jj]
+        if(instance@boundary.prior$prec[jj] == Inf){
+          betaprec[[length(betaprec)]] = 100000
+          X[[length(X)]][,jj] <- 0
+        }
       }
       w_count <- w_count + ncol(instance@X)
     }
