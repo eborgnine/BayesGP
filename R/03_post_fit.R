@@ -515,7 +515,12 @@ post_table <- function(object, quantiles = c(0.025, 0.975), digits = 3){
     }
     for (i in 1:length(object$instances)) {
       if(name == object$instances[[i]]@smoothing_var){
-        param <- object$instances[[i]]@sd.prior$param
+        if(!is.null(object$instances[[i]]@sd.prior$h) ||!is.null(object$instances[[i]]@sd.prior$step)){
+          param <- object$instances[[i]]@psd.prior$param
+        }
+        else{
+          param <- object$instances[[i]]@sd.prior$param
+        }
       }
     }
     object$instances

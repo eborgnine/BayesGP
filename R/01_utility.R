@@ -34,6 +34,7 @@ parse_formula <- function(formula) {
 setClass("IWP", slots = list(
   response_var = "name", smoothing_var = "name", order = "numeric",
   knots = "numeric", observed_x = "numeric", sd.prior = "list",
+  psd.prior = "list",
   boundary.prior = "list", data = "data.frame", X = "matrix",
   B = "matrix", P = "matrix", initial_location = "numeric"
 ))
@@ -44,6 +45,7 @@ setClass("sGP", slots = list(
   a = "numeric", freq = "numeric", period = "numeric",
   m = "numeric", k = "numeric",
   knots = "numeric", observed_x = "numeric", sd.prior = "list",
+  psd.prior = "list",
   boundary.prior = "list", data = "data.frame", X = "matrix",
   B = "matrix", P = "matrix", initial_location = "numeric", region = "numeric", 
   accuracy = "numeric", boundary = "logical"

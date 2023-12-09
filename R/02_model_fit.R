@@ -512,8 +512,11 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instance@B <- local_poly(instance)
       instance@P <- compute_weights_precision(instance)
       if(is.numeric(sd.prior$h)){
+        instance@psd.prior <- instance@sd.prior
         instance@sd.prior$param <- prior_conversion_IWP(d = sd.prior$h, prior = sd.prior$param, p = eval(rand_effect$order, envir = envir))
       } else if(is.numeric(sd.prior$step)){
+        instance@sd.prior$h <- sd.prior$step
+        instance@psd.prior <- instance@sd.prior
         instance@sd.prior$param <- prior_conversion_IWP(d = sd.prior$step, prior = sd.prior$param, p = eval(rand_effect$order, envir = envir))
       }
       instances[[length(instances) + 1]] <- instance
@@ -615,8 +618,11 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
       instance@B <- compute_B(instance)
       instance@P <- compute_P(instance)
       if(is.numeric(sd.prior$h)){
+        instance@psd.prior <- instance@sd.prior
         instance@sd.prior$param <- prior_conversion_sGP(d = sd.prior$h, prior = sd.prior$param, a = eval(rand_effect$a, envir = envir), m = m)
       } else if(is.numeric(sd.prior$step)){
+        instance@sd.prior$h <- sd.prior$step
+        instance@psd.prior <- instance@sd.prior
         instance@sd.prior$param <- prior_conversion_sGP(d = sd.prior$step, prior = sd.prior$param, a = eval(rand_effect$a, envir = envir), m = m)
       }
       instances[[length(instances) + 1]] <- instance
