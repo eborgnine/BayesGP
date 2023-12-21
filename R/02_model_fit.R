@@ -586,7 +586,7 @@ model_fit <- function(formula, data, method = "aghq", family = "Gaussian", contr
         accuracy <- eval(rand_effect$accuracy, envir = envir)
       }
       else{
-        accuracy <- 0.01
+        accuracy <- 5000
       }
       if (is.null(boundary.prior)) {
         boundary.prior <- list(prec = 0.01, mean = 0)

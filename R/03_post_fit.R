@@ -53,7 +53,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, inclu
       IWP <- instance
       ## Step 2: Initialization
       if (is.null(newdata)) {
-        refined_x_final <- seq(from = min(IWP@observed_x), to = max(IWP@observed_x), length.out = 10000)
+        refined_x_final <- seq(from = min(IWP@observed_x), to = max(IWP@observed_x), length.out = 3000)
       } else {
         refined_x_final <- sort(newdata[[variable]] - IWP@initial_location) # initialize according to `initial_location`
       }
@@ -77,7 +77,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, inclu
       sGP <- instance
       ## Step 2: Initialization
       if (is.null(newdata)) {
-        refined_x_final <- sGP@observed_x
+        refined_x_final <- seq(from = min(sGP@observed_x), to = max(sGP@observed_x), length.out = 3000)
       } else {
         refined_x_final <- sort(newdata[[variable]] - sGP@initial_location) # initialize according to `initial_location`
       }
@@ -470,7 +470,7 @@ para_density <- function(object){
   }
   
   if(object$family == "Gaussian"){
-    result_list[["family_var"]] <- var_density(object = object)
+    result_list[["family_sd"]] <- var_density(object = object)
   }
   
   return(result_list)
@@ -528,11 +528,11 @@ post_table <- function(object, quantiles = c(0.025, 0.975), digits = 3){
     result_table <- rbind(result_table, to_add)
   }
   
-  if("family_var" %in% names(all_density)){
-    all_cdf[["family_var"]] <- compute_cdf(x = all_density[["family_var"]]$SD, y = all_density[["family_var"]]$post)
-    to_add <- c("family_var", all_cdf[["family_var"]]$x[max(which(all_cdf[["family_var"]]$cdf <= 0.5))])
+  if("family_sd" %in% names(all_density)){
+    all_cdf[["family_sd"]] <- compute_cdf(x = all_density[["family_sd"]]$SD, y = all_density[["family_sd"]]$post)
+    to_add <- c("family_sd", all_cdf[["family_sd"]]$x[max(which(all_cdf[["family_sd"]]$cdf <= 0.5))])
     for (q in quantiles) {
-      to_add <- c(to_add, all_cdf[["family_var"]]$x[max(which(all_cdf[["family_var"]]$cdf <= q))])
+      to_add <- c(to_add, all_cdf[["family_sd"]]$x[max(which(all_cdf[["family_sd"]]$cdf <= q))])
     }
     to_add <- c(to_add, "Exponential", object$control.family$sd.prior$param$u, object$control.family$sd.prior$param$alpha)
     result_table <- rbind(result_table, to_add)

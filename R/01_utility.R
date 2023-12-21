@@ -1,6 +1,6 @@
 #' Function defined to enhance the usability for users on IDEs.
 #' @export
-f <- function(smoothing_var, model, sd.prior = NULL, boundary.prior = NULL, ...) {
+f <- function(smoothing_var, model = "IID", sd.prior = NULL, boundary.prior = NULL, ...) {
   # Capture the full call
   mc <- match.call(expand.dots = TRUE)
   
@@ -66,9 +66,9 @@ setClass("Customized", slots = list(
 
 #' @import Matrix
 #' @importClassesFrom Matrix dgCMatrix
-Compute_Q_sB <- function(a,k,region, accuracy = 0.01, boundary = TRUE){
+Compute_Q_sB <- function(a,k,region, accuracy = 5000, boundary = TRUE){
   ss <- function(M) {Matrix::forceSymmetric(M + Matrix::t(M))}
-  x <- seq(min(region),max(region),by = accuracy)
+  x <- seq(min(region),max(region), length.out = accuracy)
   if(boundary == TRUE){
     B_basis <- suppressWarnings(fda::create.bspline.basis(rangeval = c(min(region),max(region)),
                                                           nbasis = k,
