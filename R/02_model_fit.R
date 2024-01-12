@@ -1,4 +1,4 @@
-get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, offset_sum, aghq_k, size, cens, weight, strata, method, M, customized_template, option_list, envir = parent.frame()) {
+get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, fixed_effects_names, offset_sum, aghq_k, size, cens, weight, strata, method, M, customized_template, option_list, envir = parent.frame()) {
   family <- tolower(family)
   if(is.null(customized_template)){
     cpp = "BayesGP"
@@ -93,8 +93,8 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     if(length(design_mat_fixed) >= 1){
       for (i in 1:length(design_mat_fixed)) {
         # For each fixed effects
-        beta_fixed_prec[[i]] <- control.fixed[[fixed_effects[[i]]]]$prec
-        beta_fixed_mean[[i]] <- control.fixed[[fixed_effects[[i]]]]$mean
+        beta_fixed_prec[[i]] <- control.fixed[[fixed_effects_names[[i]]]]$prec
+        beta_fixed_mean[[i]] <- control.fixed[[fixed_effects_names[[i]]]]$mean
         Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
         w_count <- w_count + ncol(design_mat_fixed[[i]])
       }
@@ -110,8 +110,8 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
         beta_fixed_mean[[i]] <- control.fixed$intercept$mean
         
       } else {
-        beta_fixed_prec[[i]] <- control.fixed[[fixed_effects[[i - 1]]]]$prec
-        beta_fixed_mean[[i]] <- control.fixed[[fixed_effects[[i - 1]]]]$mean
+        beta_fixed_prec[[i]] <- control.fixed[[fixed_effects_names[[i - 1]]]]$prec
+        beta_fixed_mean[[i]] <- control.fixed[[fixed_effects_names[[i - 1]]]]$mean
       }
       Xf[[length(Xf) + 1]] <- dgTMatrix_wrapper(design_mat_fixed[[i]])
       w_count <- w_count + ncol(design_mat_fixed[[i]])
@@ -641,14 +641,24 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
   }
   # For fixed effects
   for (fixed_effect in fixed_effects) {
-    Xf <- matrix(data[[fixed_effect]], nrow = nrow(data), ncol = 1)
-    design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf
-    fixed_effects_names <- c(fixed_effects_names, fixed_effect)
+    if(is.numeric(data[[fixed_effect]])){
+      Xf <- matrix(data[[fixed_effect]], nrow = nrow(data), ncol = 1)
+      design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf
+      fixed_effects_names <- c(fixed_effects_names, fixed_effect)
+    }
+    else{
+      Level <- data[[fixed_effect]]
+      Xf <- model.matrix(~ Level)[,-1]
+      for (col_index in 1:ncol(Xf)) {
+        design_mat_fixed[[length(design_mat_fixed) + 1]] <- Xf[,col_index, drop = FALSE]
+      }
+      fixed_effects_names <- c(fixed_effects_names, colnames(Xf))
+    }
   }
 
   if (missing(control.fixed)) {
     control.fixed <- list(intercept = list(prec = 0.01, mean = 0))
-    for (fixed_effect in fixed_effects) {
+    for (fixed_effect in fixed_effects_names) {
       control.fixed[[fixed_effect]] <- list(prec = 0.01, mean = 0)
     }
   }
@@ -662,7 +672,7 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
     control.fixed$intercept$mean <- 0
   }
   
-  for (fixed_effect in fixed_effects) {
+  for (fixed_effect in fixed_effects_names) {
     if(!as.character(fixed_effect) %in% names(control.fixed)){
       control.fixed[[fixed_effect]] <- list(prec = 0.01, mean = 0)
     }
@@ -683,7 +693,7 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
 
   result_by_method <- get_result_by_method(response_var = response_var, data = data, instances = instances, design_mat_fixed = design_mat_fixed, family = family, 
                                            control.family = control.family, control.fixed = control.fixed, 
-                                           fixed_effects = fixed_effects, aghq_k = aghq_k, size = size, cens = cens,
+                                           fixed_effects = fixed_effects, fixed_effects_names = fixed_effects_names, aghq_k = aghq_k, size = size, cens = cens,
                                            weight = weight, strata = strata, offset_sum = offset_sum,
                                            method = method, M = M, option_list = option_list, customized_template = customized_template,
                                            envir = envir)
