@@ -22,7 +22,7 @@
 
 \item{variable}{The name of the variable to be predicted, should be in the `newdata`.}
 
-\item{deriv}{The degree of derivative that the user specifies for inference. Only applicable for a GP in the `IWP` type.}
+\item{deriv}{The degree of derivative that the user specifies for inference. Only applicable for a GP in the `iwp` type.}
 
 \item{include.intercept}{A logical variable specifying whether the intercept should be accounted when doing the prediction. The default is TRUE. For Coxph model, this 
 variable will be forced to FALSE.}

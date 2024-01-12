@@ -8,7 +8,7 @@ model_fit(
   formula,
   data,
   method = "aghq",
-  family = "Gaussian",
+  family = "gaussian",
   control.family,
   control.fixed,
   aghq_k = 4,
@@ -30,7 +30,7 @@ model_fit(
 
 \item{method}{The inference method used in the model. By default, the method is set to be "aghq".}
 
-\item{family}{The family of response used in the model. By default, the family is set to be "Gaussian".}
+\item{family}{The family of response used in the model. By default, the family is set to be "gaussian".}
 
 \item{control.family}{Parameters used to specify the priors for the family parameters, such as the standard deviation parameter of Gaussian family.}
 

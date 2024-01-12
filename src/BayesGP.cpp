@@ -47,7 +47,7 @@ Type objective_function<Type>::operator() ()
   DATA_STRUCT(beta_fixed_prec, list_Scalar_from_R);
   DATA_STRUCT(beta_fixed_mean, list_Scalar_from_R);
   DATA_STRUCT(Xf, list_SparseMatrix_from_R);
-
+  DATA_VECTOR(offset_sum);
   DATA_VECTOR(y); //response variable
   DATA_SCALAR(family_type); // Family types: Gaussian - 0, Poisson - 1, Binomial - 2, Coxph - 3, Case-Crossover - 4
 
@@ -131,7 +131,9 @@ Type objective_function<Type>::operator() ()
 
   // Transformations
   vector<Type> eta(y.size());
-
+  if (y.size() == offset_sum.size()){
+    eta += offset_sum;
+  }
   for (int i = 0; i < Xf.size(); i++){
     eta += Xf(i) * beta_fixed(i); // adding each fixed effect
   }

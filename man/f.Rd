@@ -4,7 +4,7 @@
 \alias{f}
 \title{Function defined to enhance the usability for users on IDEs.}
 \usage{
-f(smoothing_var, model = "IID", sd.prior = NULL, boundary.prior = NULL, ...)
+f(smoothing_var, model = "iid", sd.prior = NULL, boundary.prior = NULL, ...)
 }
 \description{
 Function defined to enhance the usability for users on IDEs.

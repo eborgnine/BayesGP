@@ -23,7 +23,7 @@ print.summary.FitResult <- function(summary.FitResult) {
 #' @param object The fitted object from the function `model_fit`.
 #' @param newdata The dataset that contains the locations to be predicted for the specified GP. Its column names must include `variable`.
 #' @param variable The name of the variable to be predicted, should be in the `newdata`.
-#' @param deriv The degree of derivative that the user specifies for inference. Only applicable for a GP in the `IWP` type.
+#' @param deriv The degree of derivative that the user specifies for inference. Only applicable for a GP in the `iwp` type.
 #' @param include.intercept A logical variable specifying whether the intercept should be accounted when doing the prediction. The default is TRUE. For Coxph model, this 
 #' variable will be forced to FALSE.
 #' @param only.samples A logical variable indicating whether only the posterior samples are required. The default is FALSE, and the summary of posterior samples will be reported.
@@ -49,7 +49,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, inclu
     if(boundary.condition == "Only"){
       coefsamps <- 0 * coefsamps
     }
-    if (instance@smoothing_var == variable && class(instance) == "IWP") {
+    if (instance@smoothing_var == variable && class(instance) == "iwp") {
       IWP <- instance
       ## Step 2: Initialization
       if (is.null(newdata)) {
@@ -62,8 +62,8 @@ predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, inclu
       } else{
         intercept_samps <- NULL
       }
-      ## Step 3: apply `compute_post_fun_IWP` to samps
-      f <- compute_post_fun_IWP(
+      ## Step 3: apply `compute_post_fun_iwp` to samps
+      f <- compute_post_fun_iwp(
         samps = coefsamps, global_samps = global_samps,
         knots = IWP@knots,
         refined_x = refined_x_final,
@@ -73,7 +73,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, inclu
       )
       f[,1] <- f[,1] + IWP@initial_location
     }
-    else if (instance@smoothing_var == variable && class(instance) == "sGP") {
+    else if (instance@smoothing_var == variable && class(instance) == "sgp") {
       sGP <- instance
       ## Step 2: Initialization
       if (is.null(newdata)) {
@@ -86,8 +86,8 @@ predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, inclu
       } else{
         intercept_samps <- NULL
       }
-      ## Step 3: apply `compute_post_fun_sGP` to samps
-      f <- compute_post_fun_sGP(
+      ## Step 3: apply `compute_post_fun_sgp` to samps
+      f <- compute_post_fun_sgp(
         samps = coefsamps, global_samps = global_samps,
         k = sGP@k,
         refined_x = refined_x_final,
@@ -114,7 +114,7 @@ predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, inclu
 plot.FitResult <- function(object) {
   ### Step 1: predict with newdata = NULL
   for (instance in object$instances) { ## for each variable in model_fit
-    if (class(instance) == "IWP") {
+    if (class(instance) == "iwp") {
       predict_result <- predict(object, variable = as.character(instance@smoothing_var))
       matplot(
         x = predict_result[,1], y = predict_result[, c("q0.5", "q0.025", "q0.975")], lty = c(1, 2, 2), lwd = c(2, 1, 1),
@@ -122,7 +122,7 @@ plot.FitResult <- function(object) {
         ylab = "effect", xlab = as.character(instance@smoothing_var)
       )
     }
-    if (class(instance) == "sGP") {
+    if (class(instance) == "sgp") {
       predict_result <- predict(object, variable = as.character(instance@smoothing_var))
       matplot(
         x = predict_result[,1], y = predict_result[, c("q0.5", "q0.025", "q0.975")], lty = c(1, 2, 2), lwd = c(2, 1, 1),
@@ -152,7 +152,7 @@ sample_fixed_effect <- function(model_fit, variables){
 
 
 #' Computing the posterior samples of the function or its derivative using the posterior samples
-#' of the basis coefficients for IWP
+#' of the basis coefficients for iwp
 #'
 #' @param samps A matrix that consists of posterior samples for the O-spline basis coefficients. Each column
 #' represents a particular sample of coefficients, and each row is associated with one basis function. This can
@@ -171,19 +171,19 @@ sample_fixed_effect <- function(model_fit, variables){
 #' @examples
 #' knots <- c(0, 0.2, 0.4, 0.6)
 #' samps <- matrix(rnorm(n = (3 * 10)), ncol = 10)
-#' result <- compute_post_fun_IWP(samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
+#' result <- compute_post_fun_iwp(samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
 #' plot(result[, 2] ~ result$x, type = "l", ylim = c(-0.3, 0.3))
 #' for (i in 1:9) {
 #'   lines(result[, (i + 1)] ~ result$x, lty = "dashed", ylim = c(-0.1, 0.1))
 #' }
 #' global_samps <- matrix(rnorm(n = (2 * 10), sd = 0.1), ncol = 10)
-#' result <- compute_post_fun_IWP(global_samps = global_samps, samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
+#' result <- compute_post_fun_iwp(global_samps = global_samps, samps = samps, knots = knots, refined_x = seq(0, 1, by = 0.1), p = 2)
 #' plot(result[, 2] ~ result$x, type = "l", ylim = c(-0.3, 0.3))
 #' for (i in 1:9) {
 #'   lines(result[, (i + 1)] ~ result$x, lty = "dashed", ylim = c(-0.1, 0.1))
 #' }
 #' @export
-compute_post_fun_IWP <- function(samps, global_samps = NULL, knots, refined_x, p, degree = 0, intercept_samps = NULL) {
+compute_post_fun_iwp <- function(samps, global_samps = NULL, knots, refined_x, p, degree = 0, intercept_samps = NULL) {
   if (p <= degree) {
     return(message("Error: The degree of derivative to compute is not defined. Should consider higher order smoothing model or lower order of the derivative degree."))
   }
@@ -244,10 +244,10 @@ compute_post_fun_IWP <- function(samps, global_samps = NULL, knots, refined_x, p
 #' @return A data.frame that contains different samples of the function, with the first column
 #' being the locations of evaluations x = refined_x.
 #' @export
-compute_post_fun_sGP <- function(samps, global_samps = NULL, k, refined_x, a, region, boundary = TRUE, m, intercept_samps = NULL) {
+compute_post_fun_sgp <- function(samps, global_samps = NULL, k, refined_x, a, region, boundary = TRUE, m, intercept_samps = NULL) {
   ## Design matrix for the spline basis weights
   B <- dgTMatrix_wrapper(Compute_B_sB_helper(refined_x = refined_x, k = k, a = a, region = region, boundary = boundary, initial_location = NULL, m = m))
-  X <- cbind(1,global_poly_helper_sGP(refined_x = refined_x, a = a, m = m))
+  X <- cbind(1,global_poly_helper_sgp(refined_x = refined_x, a = a, m = m))
   if (is.null(intercept_samps)) {
     intercept_samps <- matrix(0, nrow = 1, ncol = ncol(samps))
   }
@@ -265,7 +265,7 @@ compute_post_fun_sGP <- function(samps, global_samps = NULL, k, refined_x, a, re
 #' Construct posterior inference given samples
 #'
 #' @param samps Posterior samples of f or its derivative, with the first column being evaluation
-#' points x. This can be yielded by `compute_post_fun_IWP` function.
+#' points x. This can be yielded by `compute_post_fun_iwp` function.
 #' @param level The level to compute the pointwise interval. Ignored when quantiles are provided.
 #' @param quantiles A numeric vector of quantiles to be computed.
 #' @return A dataframe with a column for evaluation locations x, and posterior mean and pointwise
@@ -342,18 +342,18 @@ var_density <- function(object, component = NULL, h = NULL, theta_logprior = NUL
             }
           }
           if(!is.null(h)){
-            if(class(instance) == "IWP"){
+            if(class(instance) == "iwp"){
               p <- instance@order
               correction <- sqrt((h^((2 * p) - 1)) / (((2 * p) - 1) * (factorial(p - 1)^2)))
             }
-            else if(class(instance) == "sGP"){
+            else if(class(instance) == "sgp"){
               correction <- 0
               for (j in 1:instance@m) {
-                correction <- correction + compute_d_step_sGPsd(d = h, a = (j*instance@a))
+                correction <- correction + compute_d_step_sgpsd(d = h, a = (j*instance@a))
               }
             }
             else{
-              stop("PSD is currently on defined on IWP and sGP, please specify h = NULL for other type of random effect")
+              stop("PSD is currently on defined on iwp and sGP, please specify h = NULL for other type of random effect")
             }
             postsigmaPSD <- data.frame(PSD = postsigma$SD * correction, 
                                        post.PSD = postsigma$post / correction,
@@ -397,18 +397,18 @@ var_density <- function(object, component = NULL, h = NULL, theta_logprior = NUL
             }
           }
           if(!is.null(h)){
-            if(class(instance) == "IWP"){
+            if(class(instance) == "iwp"){
               p <- instance@order
               correction <- sqrt((h^((2 * p) - 1)) / (((2 * p) - 1) * (factorial(p - 1)^2)))
             }
-            else if(class(instance) == "sGP"){
+            else if(class(instance) == "sgp"){
               correction <- 0
               for (j in 1:instance@m) {
-                correction <- correction + compute_d_step_sGPsd(d = h, a = (j*instance@a))
+                correction <- correction + compute_d_step_sgpsd(d = h, a = (j*instance@a))
               }
             }
             else{
-              stop("PSD is currently on defined on IWP and sGP, please specify h = NULL for other type of random effect")
+              stop("PSD is currently on defined on iwp and sGP, please specify h = NULL for other type of random effect")
             }
             sigmaPSD_marg_samps <- sigma_marg_samps * correction
             postsigmaPSD <- data.frame(PSD = postsigma$SD * correction, 
