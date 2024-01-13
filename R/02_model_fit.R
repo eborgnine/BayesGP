@@ -142,14 +142,12 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     family_type = family_type
   )
   
-  # If Family == "Binomial", check whether size is defined in user's input
-  if (family_type == 2) {
-    if(is.null(data[[size]])){
-      tmbdat$size <- numeric(length = length(tmbdat$y)) + 1 # A vector of 1s being default
-    }
-    else{
-      tmbdat$size <- data[[size]]
-    }
+  if(is.null(size)){
+    tmbdat$size <- numeric(length = length(tmbdat$y)) + 1 # A vector of 1s being default
+  } else if(is.null(data[[size]])){
+    tmbdat$size <- numeric(length = length(tmbdat$y)) + 1 # A vector of 1s being default
+  } else{
+    tmbdat$size <- data[[size]]
   }
   
   # If Family == "coxph", check whether cens is defined in user's input

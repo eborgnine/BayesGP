@@ -507,6 +507,62 @@ get_default_option_list_MCMC <- function(option_list = list()){
 }
 
 
+#' Custom Template Function
+#'
+#' This function allows for the dynamic modification of a C++ template
+#' within the BayesGP package. Users can specify custom content for the 
+#' log-likelihood as well as the log-prior of the variance parameter in the template.
+#'
+#' @param LOG_LIKELIHOOD A character string or vector containing the 
+#'   lines of C++ code to be inserted in the log-likelihood section of 
+#'   the template. Should be NULL if no changes are to be made to this section.
+#' @param LOG_PRIOR A character string or vector containing the 
+#'   lines of C++ code to be inserted in the log-prior (of the variance parameter) section of 
+#'   the template. Should be NULL if no changes are to be made to this section.
+#' @param compile_template A indicator of whether the new template should be compiled. default is FALSE.
+#' @return A string representing the path to the temporary .so (or .dll) file
+#'   containing the compiled custom C++ code.
+#'
+#' @export
+custom_template <- function(LOG_LIKELIHOOD = NULL, LOG_PRIOR = NULL, compile_template = FALSE){
+  template_path <- system.file("extsrc", "BayesGP.cpp", package = "BayesGP")
+  file_content <- readLines(template_path)
+  if(!is.null(LOG_LIKELIHOOD)){
+    start_line = which(file_content == "    // START OF YOUR LOG_LIKELIHOOD: ll")
+    end_line = which(file_content == "    // END OF YOUR LOG_LIKELIHOOD")
+    if (length(start_line) == 1 && length(end_line) == 1 && start_line < end_line) {
+      # Replace the content
+      file_content <- c(file_content[1:(start_line)], LOG_LIKELIHOOD, file_content[(end_line+1):length(file_content)])
+    } else {
+      warning("Markers not found or in incorrect order")
+    }
+  }
+  if(!is.null(LOG_PRIOR)){
+    start_line = which(file_content == "  // START OF YOUR LOG_PRIOR: lpT")
+    end_line = which(file_content == "  // END OF YOUR LOG_PRIOR")
+    if (length(start_line) == 1 && length(end_line) == 1 && start_line < end_line) {
+      # Replace the content
+      file_content <- c(file_content[1:(start_line)], LOG_PRIOR, file_content[(end_line+1):length(file_content)])
+    } else {
+      warning("Markers not found or in incorrect order")
+    }
+  }
+  
+  # Create a temporary file
+  temp_file <- tempfile(fileext = ".cpp") # .cpp extension is added for clarity
+  
+  # Write the modified content to the temporary file
+  writeLines(file_content, temp_file)
+  temp_so_file <- sub("\\.cpp$", "", temp_file)
+  
+  if(compile_template == TRUE){
+    suppressWarnings(suppressMessages(invisible(TMB::compile(file = temp_file)) ))
+    dyn.load(TMB::dynlib(temp_so_file))
+  }
+  
+  return(temp_so_file)
+}
+
 
 #' Roxygen commands
 #'
