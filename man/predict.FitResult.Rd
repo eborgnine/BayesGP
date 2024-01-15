@@ -31,7 +31,7 @@ variable will be forced to FALSE.}
 
 \item{quantiles}{A numeric vector of quantiles that predict.FitResult will produce, the default is c(0.025, 0.5, 0.975).}
 
-\item{boundary.condition}{A string specifies whether the boundary.condition should be considered in the prediction, should be one of c("Yes", "No", "Only"). The default option is "Yes".}
+\item{boundary.condition}{A string specifies whether the boundary.condition should be considered in the prediction, should be one of c("yes", "no", "only"). The default option is "Yes".}
 }
 \description{
 To predict the GP component in the fitted model, at the locations specified in `newdata`.

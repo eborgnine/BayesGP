@@ -28,7 +28,7 @@ print.summary.FitResult <- function(summary.FitResult) {
 #' variable will be forced to FALSE.
 #' @param only.samples A logical variable indicating whether only the posterior samples are required. The default is FALSE, and the summary of posterior samples will be reported.
 #' @param quantiles A numeric vector of quantiles that predict.FitResult will produce, the default is c(0.025, 0.5, 0.975).
-#' @param boundary.condition A string specifies whether the boundary.condition should be considered in the prediction, should be one of c("Yes", "No", "Only"). The default option is "Yes".
+#' @param boundary.condition A string specifies whether the boundary.condition should be considered in the prediction, should be one of c("yes", "no", "only"). The default option is "Yes".
 #' @export
 predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, include.intercept = TRUE, only.samples = FALSE, quantiles = c(0.025, 0.5, 0.975), boundary.condition = "Yes") {
   if(object$family == "Coxph" || object$family == "coxph"| object$family == "cc" | object$family == "casecrossover" | object$family == "CaseCrossover"){
@@ -42,11 +42,11 @@ predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, inclu
       stop("The specified variable cannot be found in the fitted model, please check the name.")
     }
     global_samps <- samps$samps[object$boundary_samp_indexes[[variable]], , drop = F]
-    if(boundary.condition == "No"){
+    if(boundary.condition == "no"){
       global_samps <- NULL
     }
     coefsamps <- samps$samps[object$random_samp_indexes[[variable]], ]
-    if(boundary.condition == "Only"){
+    if(boundary.condition == "only"){
       coefsamps <- 0 * coefsamps
     }
     if (instance@smoothing_var == variable && class(instance) == "iwp") {
@@ -210,7 +210,7 @@ compute_post_fun_iwp <- function(samps, global_samps = NULL, knots, refined_x, p
   global_samps <- rbind(intercept_samps, global_samps)
 
   ## Design matrix for the spline basis weights
-  B <- dgTMatrix_wrapper(local_poly_helper(knots, refined_x = refined_x, p = (p - degree)))
+  B <- dgTMatrix_wrapper(local_poly_helper(knots, refined_x = refined_x, p = (p - degree), neg_sign_order = degree))
 
   if ((p - degree) >= 1) {
     X <- global_poly_helper(refined_x, p = p)
@@ -444,11 +444,11 @@ var_plot <- function(object, component = NULL, h = NULL, theta_logprior = NULL){
   hyper_result <- var_density(object = object, component = component, h = h, theta_logprior = theta_logprior, MCMC_samps_only = FALSE)
   if("PSD" %in% names(hyper_result)){
     matplot(hyper_result[,'PSD'], hyper_result[,c('post.PSD','prior.PSD')], lty=c(1,2), type = "l", xlab = "PSD", ylab = "Density")
-    legend('topright', lty=c(1,2), col=c('black','red'), legend=c('post','prior'))
+    legend('topright', lty=c(1,2), col=c('black','red'), legend=c('post','prior'), bty = "n")
   }
   else{
     matplot(hyper_result[,'SD'], hyper_result[,c('post','prior')], lty=c(1,2), type = "l", xlab = "SD", ylab = "Density")
-    legend('topright', lty=c(1,2), col=c('black','red'), legend=c('post','prior'))
+    legend('topright', lty=c(1,2), col=c('black','red'), legend=c('post','prior'), bty = "n")
   }
 }
 

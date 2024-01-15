@@ -21,9 +21,9 @@
 #' A simulated dataset from the case-crossover model.
 #'
 #'
-#' @format 'sim1data'
+#' @format 'ccData'
 #' A data frame with 3596 rows and 6 columns.
-"sim1data"
+"ccData"
 
 
 #' The monthly all-cause mortality for male with age less than 40 in Pennsylvania.

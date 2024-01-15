@@ -459,7 +459,7 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
       else{
         k <- NULL
       }
-      initial_location <- eval(rand_effect$initial_location, envir = envir)
+      initial_location <- eval(rand_effect$initial_location, envir = envir)[1]
       if (!(is.null(k)) && k < 3) {
         stop("Error: parameter <k> in the random effect part should be >= 3.")
       }
@@ -468,9 +468,23 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
       }
       boundary.prior <- eval(rand_effect$boundary.prior, envir = envir)
       # If the user does not specify initial_location, compute initial_location with
-      # the min of data[[smoothing_var]]
+      # the median of data[[smoothing_var]]
       if (is.null(initial_location)) {
-        initial_location <- min(data[[smoothing_var]])
+        initial_location <- median(data[[smoothing_var]])
+      }
+      if (!is.numeric(initial_location)){
+        if (initial_location == "middle") {
+          initial_location <- median(data[[smoothing_var]])
+        }
+        else if (initial_location == "left") {
+          initial_location <- min(data[[smoothing_var]])
+        }
+        else if (initial_location == "right") {
+          initial_location <- max(data[[smoothing_var]])
+        }
+        else{
+          stop("initial_location should be either numeric or one of 'left', 'right', 'middle'.")
+        }
       }
       # If the user does not specify knots, compute knots with
       # the parameter k
@@ -554,7 +568,8 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
       }
       a <- eval(rand_effect$a, envir = envir)
       k <- eval(rand_effect$k, envir = envir)
-      initial_location <- eval(rand_effect$initial_location, envir = envir)
+      # initial_location for sGP should be "left"
+      initial_location <- "left"
       if("m" %in% names(rand_effect)){
         m <- eval(rand_effect$m, envir = envir)
       }
@@ -574,6 +589,14 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
       # the min of data[[smoothing_var]]
       if (is.null(initial_location)) {
         initial_location <- min(data[[smoothing_var]])
+      }
+      if (!is.numeric(initial_location)){
+        if (initial_location == "left") {
+          initial_location <- min(data[[smoothing_var]])
+        }
+        else{
+          stop("initial_location should be either numeric or one of 'left', 'right', 'middle'.")
+        }
       }
       initialized_smoothing_var <- data[[smoothing_var]] - initial_location
       observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values

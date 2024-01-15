@@ -1,11 +1,17 @@
 #' Function defined to enhance the usability for users on IDEs.
 #' @export
-f <- function(smoothing_var, model = "iid", sd.prior = NULL, boundary.prior = NULL, ...) {
+f <- function(smoothing_var, model = "iid", sd.prior = NULL, boundary.prior = NULL, initial_location = c("middle", "left", "right"), ...) {
   # Capture the full call
   mc <- match.call(expand.dots = TRUE)
   
   # Replace the first argument with the function name
   mc[[1]] <- as.name("f")
+  
+  # Ensure all default arguments are included
+  mc$model <- model
+  mc$sd.prior <- sd.prior
+  mc$boundary.prior <- boundary.prior
+  mc$initial_location <- initial_location[1]
   
   # Replace smoothing_var with its unevaluated form
   mc$smoothing_var <- substitute(smoothing_var)
@@ -41,7 +47,7 @@ setClass("iwp", slots = list(
   knots = "numeric", observed_x = "numeric", sd.prior = "list",
   psd.prior = "list",
   boundary.prior = "list", data = "data.frame", X = "matrix",
-  B = "matrix", P = "matrix", initial_location = "numeric"
+  B = "matrix", P = "matrix", initial_location = "ANY"
 ))
 
 # Create a class for sgp using S4
@@ -52,7 +58,7 @@ setClass("sgp", slots = list(
   knots = "numeric", observed_x = "numeric", sd.prior = "list",
   psd.prior = "list",
   boundary.prior = "list", data = "data.frame", X = "matrix",
-  B = "matrix", P = "matrix", initial_location = "numeric", region = "numeric", 
+  B = "matrix", P = "matrix", initial_location = "ANY", region = "numeric", 
   accuracy = "numeric", boundary = "logical"
 ))
 
@@ -288,7 +294,7 @@ setMethod("local_poly", signature = "iwp", function(object) {
   smoothing_var <- object@smoothing_var
   refined_x <- (object@data)[[smoothing_var]] - initial_location
   p <- object@order
-  D <- local_poly_helper(knots, refined_x, p)
+  D <- local_poly_helper(knots = knots, refined_x = refined_x, p = p, neg_sign_order = 0)
   D # Local poly design matrix
 })
 
@@ -376,13 +382,14 @@ get_local_poly <- function(knots, refined_x, p) {
 #' the reference starting location. These k knots will define (k-1) basis function in total.
 #' @param refined_x A vector of locations to evaluate the O-spline basis
 #' @param p An integer value indicates the order of smoothness
+#' @param neg_sign_order An integer value N such that D = ((-1)^N)*D for the splines at negative knots. Default is 0.
 #' @return A matrix with i,j component being the value of jth basis function
 #' value at ith element of refined_x, the ncol should equal to number of knots minus 1, and nrow
 #' should equal to the number of elements in refined_x.
 #' @examples
 #' local_poly(knots = c(0, 0.2, 0.4, 0.6, 0.8), refined_x = seq(0, 0.8, by = 0.1), p = 2)
 #' @export
-local_poly_helper <- function(knots, refined_x, p = 2) {
+local_poly_helper <- function(knots, refined_x, p = 2, neg_sign_order = 0) {
   if (min(knots) >= 0) {
     # The case of all-positive knots
     D <- get_local_poly(knots, refined_x, p)
@@ -391,12 +398,14 @@ local_poly_helper <- function(knots, refined_x, p = 2) {
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
     knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
     D <- get_local_poly(knots_neg, refined_x_neg, p)
+    D <- D * ((-1)^neg_sign_order)
   } else {
     # Handle the negative part
     refined_x_neg <- ifelse(refined_x < 0, -refined_x, 0)
     knots_neg <- unique(sort(ifelse(knots < 0, -knots, 0)))
     D1 <- get_local_poly(knots_neg, refined_x_neg, p)
-
+    D1 <- D1 * ((-1)^neg_sign_order)
+    
     # Handle the positive part
     refined_x_pos <- ifelse(refined_x > 0, refined_x, 0)
     knots_pos <- unique(sort(ifelse(knots > 0, knots, 0)))
