@@ -153,6 +153,10 @@ Type objective_function<Type>::operator() ()
     REPORT(sigma(i));
   }
 
+  // START OF YOUR SETUP
+  
+  // END OF YOUR SETUP
+
 
   // Log likelihood
   Type ll = 0;
@@ -215,6 +219,12 @@ Type objective_function<Type>::operator() ()
     ll = 0;
   }
 
+  else if (family_type == -1){
+    // START OF YOUR LOG_LIKELIHOOD: ll
+    ll = 0;
+    // END OF YOUR LOG_LIKELIHOOD
+  }
+
   REPORT(ll);
 
   // Log prior on W
@@ -243,6 +253,7 @@ Type objective_function<Type>::operator() ()
     lpW += -0.5 * beta_fixed_prec(i) * bbf; //
   }
 
+  // START OF YOUR LOG_PRIOR: lpT
   // Log prior for theta
   Type lpT = 0;
   // Variance of each random effect (and the family)
@@ -250,6 +261,7 @@ Type objective_function<Type>::operator() ()
     Type phi = -log(alpha(i)) / u(i);
     lpT += log(0.5 * phi) - phi*exp(-0.5*theta(i)) - 0.5*theta(i);
   }
+  // END OF YOUR LOG_PRIOR
 
   // Final result!
   Type logpost = -1 * (ll + lpW + lpT);

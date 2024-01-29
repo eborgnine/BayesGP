@@ -20,7 +20,8 @@ model_fit(
   customized_template = NULL,
   Customized_RE = NULL,
   option_list = list(),
-  envir = parent.frame()
+  envir = parent.frame(),
+  extra_theta_num = NULL
 )
 }
 \arguments{
@@ -49,6 +50,8 @@ model_fit(
 \item{envir}{The environment in which the formula and other expressions are to be evaluated. 
 Defaults to `parent.frame()`, which refers to the environment from which the function was called.
 This allows the function to access variables that are defined in the calling function's scope.}
+
+\item{extra_theta_num}{An integer number to indicate the extra number of parameters required in the 'theta' vector. Should only be specified when using customized template.}
 }
 \value{
 A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for

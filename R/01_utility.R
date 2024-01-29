@@ -356,6 +356,23 @@ setMethod("compute_weights_precision", signature = "iwp", function(object) {
   }
 })
 
+#' Constructing the precision matrix given the knot sequence (helper)
+#'
+#' @param x A vector of knots used to construct the O-spline basis, first knot should be viewed as "0",
+#' the reference starting location. These k knots will define (k-1) basis function in total.
+#' @return A precision matrix of the corresponding basis function, should be diagonal matrix with
+#' size (k-1) by (k-1).
+#' @examples
+#' compute_weights_precision(x = c(0,0.2,0.4,0.6,0.8))
+#' @export
+compute_weights_precision_helper <- function(x){
+  d <- diff(x)
+  Precweights <- diag(d)
+  Precweights
+}
+
+
+
 get_local_poly <- function(knots, refined_x, p) {
   dif <- diff(knots)
   nn <- length(refined_x)
@@ -521,7 +538,10 @@ get_default_option_list_MCMC <- function(option_list = list()){
 #' This function allows for the dynamic modification of a C++ template
 #' within the BayesGP package. Users can specify custom content for the 
 #' log-likelihood as well as the log-prior of the variance parameter in the template.
-#'
+#' 
+#' 
+#' @param SETUP A character string or vector containing the 
+#'   lines of C++ code to be inserted before the computation of log-likelihood.
 #' @param LOG_LIKELIHOOD A character string or vector containing the 
 #'   lines of C++ code to be inserted in the log-likelihood section of 
 #'   the template. Should be NULL if no changes are to be made to this section.
@@ -533,9 +553,19 @@ get_default_option_list_MCMC <- function(option_list = list()){
 #'   containing the compiled custom C++ code.
 #'
 #' @export
-custom_template <- function(LOG_LIKELIHOOD = NULL, LOG_PRIOR = NULL, compile_template = FALSE){
+custom_template <- function(SETUP = NULL, LOG_LIKELIHOOD = NULL, LOG_PRIOR = NULL, compile_template = FALSE){
   template_path <- system.file("extsrc", "BayesGP.cpp", package = "BayesGP")
   file_content <- readLines(template_path)
+  if(!is.null(SETUP)){
+    start_line = which(file_content == "  // START OF YOUR SETUP")
+    end_line = which(file_content == "  // END OF YOUR SETUP")
+    if (length(start_line) == 1 && length(end_line) == 1 && start_line < end_line) {
+      # Replace the content
+      file_content <- c(file_content[1:(start_line)], SETUP, file_content[(end_line+1):length(file_content)])
+    } else {
+      warning("Markers not found or in incorrect order")
+    }
+  }
   if(!is.null(LOG_LIKELIHOOD)){
     start_line = which(file_content == "    // START OF YOUR LOG_LIKELIHOOD: ll")
     end_line = which(file_content == "    // END OF YOUR LOG_LIKELIHOOD")

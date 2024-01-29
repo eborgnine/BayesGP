@@ -153,6 +153,10 @@ Type objective_function<Type>::operator() ()
     REPORT(sigma(i));
   }
 
+  // START OF YOUR SETUP
+  
+  // END OF YOUR SETUP
+
 
   // Log likelihood
   Type ll = 0;

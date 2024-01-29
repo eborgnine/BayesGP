@@ -1,4 +1,4 @@
-get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, fixed_effects_names, offset_sum, aghq_k, size, cens, weight, strata, method, M, customized_template, option_list, envir = parent.frame()) {
+get_result_by_method <- function(response_var, data, instances, design_mat_fixed, family, control.family, control.fixed, fixed_effects, fixed_effects_names, offset_sum, aghq_k, size, cens, weight, strata, method, M, customized_template, option_list, envir = parent.frame(), extra_theta_num) {
   family <- tolower(family)
   if(is.null(customized_template)){
     cpp = "BayesGP"
@@ -218,6 +218,18 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     W = c(rep(0, w_count)), # recall W is everything in the model (RE or FE)
     theta = c(rep(0, theta_count))
   )
+  
+  if(!is.null(customized_template)){
+    if(is.null(extra_theta_num)){
+      num_theta_to_add = 0
+    }
+    else if(is.numeric(extra_theta_num)){
+      num_theta_to_add = extra_theta_num
+    }
+    tmbparams$theta <- c(tmbparams$theta,rep(0,num_theta_to_add))
+    theta_count <- length(tmbparams$theta)
+  }
+  
   if(theta_count == 0 & method != "nlminb"){
     stop("For model with no hyper-parameter, the method cannot be aghq or MCMC.")
   }
@@ -316,12 +328,13 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
 #' @param envir The environment in which the formula and other expressions are to be evaluated. 
 #'   Defaults to `parent.frame()`, which refers to the environment from which the function was called.
 #'   This allows the function to access variables that are defined in the calling function's scope.
+#' @param extra_theta_num An integer number to indicate the extra number of parameters required in the 'theta' vector. Should only be specified when using customized template.
 #' @return A list that contains following items: the S4 objects for the random effects (instances), concatenated design matrix for
 #' the fixed effects (design_mat_fixed), fitted aghq (mod) and indexes to partition the posterior samples
 #' (boundary_samp_indexes, random_samp_indexes and fixed_samp_indexes).
 #'
 #' @export
-model_fit <- function(formula, data, method = "aghq", family = "gaussian", control.family, control.fixed, aghq_k = 4, size = NULL, cens = NULL, weight = NULL, strata = NULL, M = 3000, customized_template = NULL, Customized_RE = NULL, option_list = list(), envir = parent.frame()) {
+model_fit <- function(formula, data, method = "aghq", family = "gaussian", control.family, control.fixed, aghq_k = 4, size = NULL, cens = NULL, weight = NULL, strata = NULL, M = 3000, customized_template = NULL, Customized_RE = NULL, option_list = list(), envir = parent.frame(), extra_theta_num = NULL) {
   # parse the input formula
   parse_result <- parse_formula(formula)
   response_var <- parse_result$response
@@ -717,7 +730,7 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
                                            fixed_effects = fixed_effects, fixed_effects_names = fixed_effects_names, aghq_k = aghq_k, size = size, cens = cens,
                                            weight = weight, strata = strata, offset_sum = offset_sum,
                                            method = method, M = M, option_list = option_list, customized_template = customized_template,
-                                           envir = envir)
+                                           envir = envir, extra_theta_num = extra_theta_num)
   mod <- result_by_method$mod
   w_count <- result_by_method$w_count
 
