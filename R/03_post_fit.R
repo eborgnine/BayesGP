@@ -93,9 +93,10 @@ predict.FitResult <- function(object, newdata = NULL, variable, deriv = 0, inclu
         refined_x = refined_x_final,
         a = sGP@a, 
         m = sGP@m,
-        region = sGP@region,
+        region = (sGP@region - sGP@initial_location),
         intercept_samps = intercept_samps,
-        boundary = sGP@boundary
+        boundary = sGP@boundary,
+        initial_location = 0
       )
       f[,1] <- f[,1] + sGP@initial_location
     }
@@ -241,12 +242,13 @@ compute_post_fun_iwp <- function(samps, global_samps = NULL, knots, refined_x, p
 #' @param refined_x A vector of locations to evaluate the sB basis
 #' @param a The frequency of sGP.
 #' @param m The number of harmonics to consider
+#' @param initial_location The initial location of the sGP.
 #' @return A data.frame that contains different samples of the function, with the first column
 #' being the locations of evaluations x = refined_x.
 #' @export
-compute_post_fun_sgp <- function(samps, global_samps = NULL, k, refined_x, a, region, boundary = TRUE, m, intercept_samps = NULL) {
+compute_post_fun_sgp <- function(samps, global_samps = NULL, k, refined_x, a, region, boundary = TRUE, m, intercept_samps = NULL, initial_location = NULL) {
   ## Design matrix for the spline basis weights
-  B <- dgTMatrix_wrapper(Compute_B_sB_helper(refined_x = refined_x, k = k, a = a, region = region, boundary = boundary, initial_location = NULL, m = m))
+  B <- dgTMatrix_wrapper(Compute_B_sB_helper(refined_x = refined_x, k = k, a = a, region = region, boundary = boundary, initial_location = initial_location, m = m))
   X <- cbind(1,global_poly_helper_sgp(refined_x = refined_x, a = a, m = m))
   if (is.null(intercept_samps)) {
     intercept_samps <- matrix(0, nrow = 1, ncol = ncol(samps))

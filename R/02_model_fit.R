@@ -617,7 +617,7 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
         region <- eval(rand_effect$region, envir = envir)
       }
       else{
-        region <- range(observed_x)
+        region <- range(data[[smoothing_var]])
       }
       if("accuracy" %in% names(rand_effect)){
         accuracy <- eval(rand_effect$accuracy, envir = envir)

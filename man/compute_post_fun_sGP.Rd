@@ -14,7 +14,8 @@ compute_post_fun_sgp(
   region,
   boundary = TRUE,
   m,
-  intercept_samps = NULL
+  intercept_samps = NULL,
+  initial_location = NULL
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ assume there will be no global polynomials and the boundary conditions are exact
 \item{region}{The region to define the sB basis}
 
 \item{m}{The number of harmonics to consider}
+
+\item{initial_location}{The initial location of the sGP.}
 }
 \value{
 A data.frame that contains different samples of the function, with the first column

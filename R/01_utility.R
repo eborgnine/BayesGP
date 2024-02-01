@@ -213,6 +213,7 @@ Compute_B_sB_helper <- function(refined_x, a, k, m, region, boundary = TRUE, ini
     initial_location <- min(refined_x)
   }
   refined_x <- refined_x - initial_location
+  region <- region - initial_location
   B <- NULL
   for (i in 1:m) {
     B <- cbind(B, Compute_B_sB(x = refined_x, a = (i*a), region = region, k = k, boundary = boundary))
@@ -239,10 +240,10 @@ setMethod("compute_B", signature = "sgp", function(object) {
   a <- object@a
   k <- object@k
   m <- object@m
-  region <- object@region
+  initial_location <- object@initial_location
+  region <- object@region - initial_location
   accuracy <- object@accuracy
   boundary <- object@boundary
-  initial_location <- object@initial_location
   refined_x <- (object@data)[[smoothing_var]] - initial_location
   B <- NULL
   for (i in 1:m) {
@@ -267,13 +268,13 @@ setMethod("compute_P", signature = "customized", function(object) {
 })
 setMethod("compute_P", signature = "sgp", function(object) {
   smoothing_var <- object@smoothing_var
+  initial_location <- object@initial_location
   a <- object@a
   k <- object@k
   m <- object@m
-  region <- object@region
+  region <- object@region - initial_location
   accuracy <- object@accuracy
   boundary <- object@boundary
-  initial_location <- object@initial_location
   refined_x <- (object@data)[[smoothing_var]] - initial_location
   Q <- Compute_Q_sB(a = a, k = k, region = region, accuracy = accuracy)
   if(m >= 2){
