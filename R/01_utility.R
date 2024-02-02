@@ -79,7 +79,12 @@ setClass("customized", slots = list(
 #' @importClassesFrom Matrix dgCMatrix
 Compute_Q_sB <- function(a,k,region, accuracy = 5000, boundary = TRUE){
   ss <- function(M) {Matrix::forceSymmetric(M + Matrix::t(M))}
-  x <- seq(min(region),max(region), length.out = accuracy)
+  if((accuracy %% 1) == 0){
+    x <- seq(min(region),max(region), length.out = accuracy)
+  }
+  else{
+    x <- seq(min(region),max(region), by = accuracy)
+  }
   if(boundary == TRUE){
     B_basis <- suppressWarnings(fda::create.bspline.basis(rangeval = c(min(region),max(region)),
                                                           nbasis = k,
