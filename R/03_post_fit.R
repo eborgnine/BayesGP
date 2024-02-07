@@ -313,7 +313,7 @@ var_density <- function(object, component = NULL, h = NULL, theta_logprior = NUL
   
   if(any(class(object$mod) == "aghq")){
     if(is.null(component)){
-      if(object$family != "Gaussian"){
+      if(object$family != "gaussian"){
         stop("There is no family SD in the fitted model. Please indicate which component of the var-parameter that you want to show in `component`.")
       }
       theta_marg <- object$mod$marginals[[length(object$instances) + 1]]
@@ -373,7 +373,7 @@ var_density <- function(object, component = NULL, h = NULL, theta_logprior = NUL
   else if(any(class(object$mod) == "stanfit")){
     sigmaPSD_marg_samps <- NULL
     if(is.null(component)){
-      if(object$family != "Gaussian"){
+      if(object$family != "gaussian"){
         stop("There is no family SD in the fitted model. Please indicate which component of the var-parameter that you want to show in `component`.")
       }
       theta_marg_samps <- object$samps$thet[[length(object$instances) + 1]]
@@ -471,7 +471,7 @@ para_density <- function(object){
     result_list[[random_name]] <- var_density(object = object, component = random_name)
   }
   
-  if(object$family == "Gaussian"){
+  if(object$family == "gaussian"){
     result_list[["family_sd"]] <- var_density(object = object)
   }
   
