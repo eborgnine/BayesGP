@@ -52,6 +52,7 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     # For each random effects
     if (class(instance) == "iwp") {
       X[[length(X) + 1]] <- dgTMatrix_wrapper(instance@X)
+      if(instance@order != 1){
       for (jj in 1:length(instance@boundary.prior$prec)) {
         betaprec[[length(betaprec) + 1]] <- instance@boundary.prior$prec[jj]
         betamean[[length(betamean) + 1]] <- instance@boundary.prior$mean[jj]
@@ -59,6 +60,7 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
           betaprec[[length(betaprec)]] = 100000
           X[[length(X)]][,jj] <- 0
         }
+      }
       }
       w_count <- w_count + ncol(instance@X)
     }
@@ -515,10 +517,15 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
       }
       observed_x <- sort(initialized_smoothing_var) # initialized_smoothing_var: initialized observed covariate values
       if (is.null(boundary.prior)) {
-        boundary.prior <- list(prec = 0.01, mean = 0)
+        if(order != 1){
+          boundary.prior <- list(prec = 0.001, mean = 0)
+        }
+        else{
+          boundary.prior <- list()
+        }
       }
       if(is.null(boundary.prior$prec)){
-        boundary.prior$prec <- 0.01
+        boundary.prior$prec <- 0.001
       }
       if(is.null(boundary.prior$mean)){
         boundary.prior$mean <- 0
@@ -626,10 +633,10 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
         accuracy <- 5000
       }
       if (is.null(boundary.prior)) {
-        boundary.prior <- list(prec = 0.01, mean = 0)
+        boundary.prior <- list(prec = 0.001, mean = 0)
       }
       if(is.null(boundary.prior$prec)){
-        boundary.prior$prec <- 0.01
+        boundary.prior$prec <- 0.001
       }
       if(is.null(boundary.prior$mean)){
         boundary.prior$mean <- 0
@@ -691,16 +698,16 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
   }
 
   if (missing(control.fixed)) {
-    control.fixed <- list(intercept = list(prec = 0.01, mean = 0))
+    control.fixed <- list(intercept = list(prec = 0.001, mean = 0))
     for (fixed_effect in fixed_effects_names) {
-      control.fixed[[fixed_effect]] <- list(prec = 0.01, mean = 0)
+      control.fixed[[fixed_effect]] <- list(prec = 0.001, mean = 0)
     }
   }
   if(!"intercept" %in% names(control.fixed)){
-    control.fixed$intercept <- list(prec = 0.01, mean = 0)
+    control.fixed$intercept <- list(prec = 0.001, mean = 0)
   }
   if(is.null(control.fixed$intercept$prec)){
-    control.fixed$intercept$prec <- 0.01
+    control.fixed$intercept$prec <- 0.001
   }
   if(is.null(control.fixed$intercept$mean)){
     control.fixed$intercept$mean <- 0
@@ -708,10 +715,10 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
   
   for (fixed_effect in fixed_effects_names) {
     if(!as.character(fixed_effect) %in% names(control.fixed)){
-      control.fixed[[fixed_effect]] <- list(prec = 0.01, mean = 0)
+      control.fixed[[fixed_effect]] <- list(prec = 0.001, mean = 0)
     }
     if(is.null(control.fixed[[fixed_effect]]$prec)){
-      control.fixed[[fixed_effect]]$prec <- 0.01
+      control.fixed[[fixed_effect]]$prec <- 0.001
     }
     if(is.null(control.fixed[[fixed_effect]]$mean)){
       control.fixed[[fixed_effect]]$mean <- 0
