@@ -320,9 +320,10 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
 #' @param data A dataframe that contains the response variable and other covariates mentioned in the formula.
 #' @param method The inference method used in the model. By default, the method is set to be "aghq".
 #' @param family The family of response used in the model. By default, the family is set to be "gaussian".
-#' @param control.family Parameters used to specify the priors for the family parameters, such as the standard deviation parameter of Gaussian family.
-#' @param control.fixed Parameters used to specify the priors for the fixed effects.
-#' @param cens The name of the right-censoring indicator, should be one of the variables in `data`. The default value is "NULL".
+#' @param control.family Parameters used to specify the priors for the family parameters, such as the standard deviation parameter of Gaussian family. For example control.family = 1 in the Gaussian family corresponds to an Exponential prior to the standard deviation parameter of the Gaussian noise with median 1. When left unspecified, the default prior is an Exponential prior with median 1.
+#' @param control.fixed Parameters used to specify the priors for the fixed effects. For example control.fixed = list(intercept = list(prec = 0.001, mean = 0)) will setup the prior N(0,1/0.001) for the intercept parameter. When left unspecified, all fixed effect parameters will be assigned independent N(0,1/0.001) priors. 
+#' @param size The name of the size variable, should be one of the variables in `data`. The default value is "NULL", corresponding to a vector of 1s. This is only used for the Binomial family, and denotes the number of binomial trails.
+#' @param cens The name of the right-censoring indicator, should be one of the variables in `data`. The default value is "NULL". This is only used for the CoxPH family.
 #' @param M The number of posterior samples to be taken, by default is 3000.
 #' @param customized_template The name of the customized cpp template that the user wants to use instead. By default this is NULL, and the cpp template `BayesGP` will be used.
 #' @param Customized_RE The list that contains the compute_B and compute_P functions for the customized random effect. By default, this is NULL and there is not customized random effect in the model.
