@@ -1,0 +1,160 @@
+---
+title: "BayesGP: manual changes to model file"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{BayesGP: Manual Changes}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r data}
+data('bacteria', package= 'MASS')
+bacteria$Yresp = as.numeric(bacteria$y == 'y')
+bacteria$treatment = as.numeric(bacteria$trt != 'placebo')
+bacteria$week2 = as.numeric(bacteria$week >0)
+bacteria$ones = 1
+
+summary(glm(Yresp ~ + week2 + treatment, data=bacteria, family=binomial))$coef
+```
+
+
+```{r bayesGp}
+res = BayesGP::model_fit(Yresp~ week2 + treatment +
+                           f(ID, model ="IID", sd.prior= list(prior= "exp",
+                          param =list(u =1, alpha=0.5))),
+                           data = bacteria, family='binomial', size = 'ones')
+
+summary(res)
+# make summary like glm, summary(), returns a list, with a print method
+# so we can do summary(res)$coef
+```
+
+```{r customCpp}
+theCpp =list.files(system.file("extsrc", package="BayesGP"), full.names=TRUE)
+theCpp = scan(theCpp, what='a', sep='\n')
+
+theCpp = gsub("PARAMETER_VECTOR[(]theta[)];", "DATA_VECTOR(theta);", theCpp)
+theCpp = theCpp[grep("lpT [+]=", theCpp, invert=TRUE)]
+
+
+theCppFile = tempfile(fileext='.cpp')
+theCppFileSansExt = gsub("[.]cpp$", "", theCppFile)
+
+theCpp = gsub("R_init_BayesGP", 
+  paste0("R_init_", basename(theCppFileSansExt)),
+  theCpp)
+
+
+write(theCpp, theCppFile)
+TMB::compile(theCppFile)
+theDll <- dyn.load(TMB::dynlib(theCppFileSansExt))
+```
+
+
+
+```{r customDat}
+theData = res$tmb_args$data
+theData$theta = log(1.1^(-2))
+
+theParameters = res$tmb_args$parameters['W']
+
+library('TMB')
+ff <- MakeADFun(
+      data = theData,
+      parameters = theParameters,
+      random = "W",
+      DLL = theDll[[1]],
+      silent = TRUE
+)
+
+ff$he <- function(w) numDeriv::jacobian(ff$gr, w)
+default_option_list <- BayesGP::get_default_option_list_MCMC(list(chains=4, cores=4, warmup=4000))
+Nsamples = 2000
+
+options(mc.cores = parallel::detectCores())
+rstan::rstan_options(auto_write = TRUE)
+rstan::rstan_options(threads_per_chain = 1)
+mod <- tmbstan::tmbstan(
+        ff,
+        chains = default_option_list$chains,
+        cores = default_option_list$cores,
+        iter = default_option_list$warmup + Nsamples,
+        warmup = default_option_list$warmup,
+        seed = default_option_list$seed,
+        silent = default_option_list$silent,
+        laplace = default_option_list$laplace
+)
+```
+
+
+```{r fitSn}
+allSamples = rstan::extract(mod, 'W')[['W']]
+samplesIntercept = allSamples[,51]
+fitBFGS =sn::msn.mle(y=allSamples, start = list(
+  beta = apply(allSamples, 2, mean),
+  Omega = var(allSamples),
+  alpha = rep(0, ncol(allSamples))
+  ), opt.method='BFGS', 
+  control=list(maxit=1e6,  
+   trace=TRUE, reltol = 1e-12, 
+    parscale = rep(1e2, 106),
+  fnscale = 1e-6 )
+)
+fitCG =sn::msn.mle(y=allSamples, start = fitBFGS$dp, opt.method='CG', 
+  control=list(maxit=1e4,  reltol = 1e-12,     parscale = rep(1e2, 106),
+  fnscale = 1e-6 , trace=FALSE) )
+fitSANN =sn::msn.mle(y=allSamples, start = fitCG$dp, opt.method='SANN', 
+  control=list(maxit=1e2,  trace=TRUE) )
+fitBFGS$opt.method$value
+fitCG$opt.method$value - fitBFGS$opt.method$value
+fitSANN$opt.method$value - fitBFGS$opt.method$value
+
+
+theSnFit = fitBFGS
+```
+
+```{r checkSn}
+(theSnFitIntercept  = c(
+  location = theSnFit$dp$beta[1,51], 
+  scale = theSnFit$dp$Omega[51,51],
+  scaleSqrt = sqrt(theSnFit$dp$Omega[51,51]),
+  skew = theSnFit$dp$alpha[51]))
+c(mean(samplesIntercept), mean(samplesIntercept^2), mean(samplesIntercept^3))
+```
+
+
+
+```{r allHIst, fig.height=15, fig.width=12}
+par(mfrow =c(11,5), mar = c(1.5, 0, 0,0), bty='n', mgp=c(0.5, 0.2, 0))
+for(D in 1:ncol(allSamples)) {
+  hist(allSamples[,D], prob=TRUE, breaks = 30, main='', 
+    xlim = quantile(allSamples[,D], c(0.001, 0.999)), xlab='', ylab='', yaxt='n')
+  Sx = seq(par('usr')[1], par('usr')[2], len=1000)
+lines(Sx, 
+  sn::dsn(Sx, 
+    xi=theSnFit$dp$beta[1,D], 
+    omega=sqrt(theSnFit$dp$Omega[D,D]), 
+    alpha=theSnFit$dp$alpha[D]),
+  col='red')
+}
+```
+
+
+```{r theHist, fig.cap='Intercept', fig.subcap = c('traceplot', 'hist')}
+D = 52
+samplesHere = allSamples[,D]
+#plot(samplesHere, type='l')
+hist(samplesHere, prob=TRUE, breaks=30)
+Sx = seq(par('usr')[1], par('usr')[2], len=1000)
+lines(Sx, 
+ sn::dsn(Sx, 
+    xi=theSnFit$dp$beta[1,D], 
+    omega=sqrt(theSnFit$dp$Omega[D,D]), 
+    alpha=theSnFit$dp$alpha[D]),
+  col='red')
+```
+
+
+
+
+

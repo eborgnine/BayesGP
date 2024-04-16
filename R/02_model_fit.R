@@ -236,6 +236,7 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     stop("For model with no hyper-parameter, the method cannot be aghq or MCMC.")
   }
   
+
   if(method == "nlminb"){
     if(theta_count != 0){
       stop("For model with hyper-parameter, the method should be aghq or MCMC.")
@@ -304,7 +305,7 @@ get_result_by_method <- function(response_var, data, instances, design_mat_fixed
     }
 
   }
-  return(list(mod = mod, w_count = w_count))
+  return(list(mod = mod, w_count = w_count, tmb_args = list(data = tmbdat, parameters=tmbparams)))
 }
 
 
@@ -799,7 +800,8 @@ model_fit <- function(formula, data, method = "aghq", family = "gaussian", contr
     fixed_samp_indexes = fixed_samp_indexes,
     family = family,
     control.family = control.family,
-    control.fixed = control.fixed
+    control.fixed = control.fixed,
+    tmb_args = result_by_method$tmb_args
   )
   
   if(any(class(fit_result$mod) == "aghq")){
