@@ -77,7 +77,8 @@ theHessian2 = function(W, theta) {
   theDens$gr(c(W, theta))[1:length(W)]  
 }
 ```
-```{r tesAdFun, cache=TRUE}
+
+```{r tesAdFun, cache=TRUE, eval=FALSE}
 for(Dconfig in c(3,5, 8)) {
 thetaHere = res$mod$modesandhessians$theta[Dconfig]
 
@@ -105,10 +106,142 @@ print(c(sd=exp(thetaHere)^(-0.5),
 ```
 
 
+impolrtant sampling weighted mle
+```{r isFit}
+
+importanceSampleSkewT = function(Nsamps, mode, df, theta, densFunAll, skewScale = 1,  threshold = 0.999) {
+
+hessian = densFunAll$he(c(mode, theta))
+hessian = hessian[-nrow(hessian), -nrow(hessian)]
+sigma2 = ((df-2)/df)*solve(hessian)
+sigma2 = (sigma2 + t(sigma2))/2
+
+oneHess = function(x, ind, mode, theta){
+  theArgs = mode 
+  theArgs[ind] = x
+  densFunAll$he(c(theArgs, theta))[ind,ind]
+}
+
+thirdDeriv = mapply(oneHess, 
+  x = mode, ind = 1:length(mode),
+  MoreArgs = list(mode = mode, theta = thetaHere)
+)
+
+skew = thirdDeriv * skewScale
+
+samples_T1 = sn::rmst(
+  Nsamps, xi = mode, 
+  Omega = sigma2, 
+  alpha =skew,
+  nu=df)
+
+densProp = sn::dmst(
+  samples_T1,xi = mode, 
+  Omega = sigma2, alpha =skew,
+  nu=df,
+  log=TRUE)
+
+densData = -apply(cbind(samples_T1, theta), 1, densFunAll$fn)
+
+theProb = densData - densProp
+theProb = theProb - max(theProb)
+theProb = exp(theProb)
+theProb = theProb/sum(theProb)
+
+theOrder = order(theProb, decreasing=TRUE)
+toKeep = min(which(cumsum(theProb[theOrder]) > 0.999))
+toKeep = which(theOrder < toKeep)
+
+sampsSub = samples_T1[toKeep, ]
+
+theSnFit = sn::msn.mle(
+  y=sampsSub, 
+  opt.method='BFGS', 
+  w = theProb[toKeep],
+  start = list(
+  beta = apply(sampsSub, 2, mean),
+  Omega = var(sampsSub),
+  alpha = skew/10
+  ),
+  control=list(maxit=1e6,  trace=FALSE, reltol = 1e-9, 
+   parscale = rep(c(1e-1, 1e4), each=length(mode)))
+)
+
+theSnFit$dp
+}
+
+Dconfig = 1
+stuff = importanceSampleSkewT(
+  mode = res$mod$modesandhessians$mode[[Dconfig]],
+  theta = as.list(res$mod$modesandhessians$theta)[[Dconfig]],
+    Nsamps = 2e5,
+    densFunAll = theDens,
+    df = 40, 
+    skewScale = 1,
+   threshold = 0.999
+)
+
+
+
+fitMle = parallel::mcmapply(
+  importanceSampleSkewT,
+  mode = res$mod$modesandhessians$mode,
+  theta = as.list(res$mod$modesandhessians$theta),
+  MoreArgs = list( 
+    Nsamps = 2e5,
+    densFunAll = theDens,
+    df = 40, 
+    skewScale = 1,
+   threshold = 0.999
+  ),
+  mc.cores = 1, 
+  SIMPLIFY=FALSE
+)
+
+
+```
+
+```{r plotFitMle, fig.cap = 'Intercept, SN (blue) and N (red)', fig.subcap = 1:length(fitMle), fig.height=4,fig.width=4}
+par(mar= c(2,0,0,0), mgp=c(1,0.5, 0), bty='n')
+Sx = seq(0,10,len=1001)
+Dpar = 51
+
+sqrt2overpi = sqrt(2/pi)
+
+for(Dconfig  in 1:length(fitMle)) {
+
+plot(Sx, 
+  dnorm(Sx, 
+    mean=res$mod$modesandhessians$mode[[Dconfig]][Dpar], 
+    sd=sqrt(solve(res$mod$modesandhessians$H[[Dconfig]])[Dpar,Dpar])
+  ), type='l', xlab='',
+  col='red')
+
+
+theScale = sqrt(fitMle[[Dconfig]]$Omega[Dpar,Dpar])
+delta = fitMle[[Dconfig]]$alpha[Dpar] / sqrt(1 + fitMle[[Dconfig]]$alpha[Dpar]^2)
+theMeanSn = fitMle[[Dconfig]]$beta[1,Dpar] + theScale * delta * sqrt2overpi
+
+lines(Sx, 
+  sn::dsn(Sx, 
+    xi = fitMle[[Dconfig]]$beta[1,Dpar],
+    omega = theScale,
+    alpha = fitMle[[Dconfig]]$alpha[Dpar]
+  ), 
+  col='blue')
+abline(v = res$mod$modesandhessians$mode[[Dconfig]][Dpar], col='red', lwd=3)
+abline(v= fitMle[[Dconfig]]$moments[Dpar,1], col='blue', lwd=3, lty=2)
+abline(v=theMeanSn, col='green', lwd=3,lty=3)
+
+}
+
+```
+
+
 
 do importance sampling to get first moment
 
-```{r importancesampling}
+```{r importancesampling, eval=FALSE}
 forImportanceSampling = function(Nsamps, mode, hessian, df, theta, densFun) {
 
 sigma2 = ((df-2)/df)*solve(hessian)
@@ -177,7 +310,7 @@ firstMomentAll[51,,]
 
 
 
-```{r customCpp, cache=FALSE, stuff=1}
+```{r customCpp, cache=FALSE, stuff=1, eval=FALSE}
 theCpp =list.files(system.file("extsrc", package="BayesGP"), full.names=TRUE)
 theCpp = scan(theCpp, what='a', sep='\n')
 
@@ -198,7 +331,7 @@ TMB::compile(theCppFile)
 
 
 test optim again.
-```{r theAdFun}
+```{r theAdFun, eval=FALSE}
 theDll <- dyn.load(TMB::dynlib(theCppFileSansExt))
 
 Dconfig = 1
@@ -246,7 +379,7 @@ print(c(sd=exp(ffFixedTheta$env$data$theta)^(-0.5),
 
 MCMC with fixed theta
 
-```{r mcmc, cache=TRUE}
+```{r mcmc, cache=TRUE, eval=FALSE}
 
 default_option_list <- BayesGP::get_default_option_list_MCMC(
   list(chains=16, cores=8, warmup=4000))
@@ -271,7 +404,7 @@ allSamples = rstan::extract(mod)$par
 ```
 
 
-```{r allSamplesPlot, eval=TRUE, fig.cap = 'marginals v joint', fig.subcap = c('joint','m1','m2')}
+```{r allSamplesPlot, eval=TRUE, fig.cap = 'marginals v joint', fig.subcap = c('joint','m1','m2'), eval=FALSE}
 
 lims1 = quantile(allSamples[,51], c(0.05, 0.95))
 lims2 = quantile(allSamples[,52], c(0.05, 0.95))
@@ -321,7 +454,7 @@ theDens2 = LogConcDEAD::mlelcd(
 ```
 
 
-```{r fitSn, eval=TRUE, cache=TRUE}
+```{r fitSn, eval=TRUE, cache=TRUE, eval=FALSE}
 theSnFit = sn::msn.mle(y=allSamples, 
   opt.method='BFGS', 
   start = list(
@@ -339,7 +472,7 @@ theSnFit = sn::msn.mle(y=allSamples,
 
 
 
-```{r allHIst, fig.height=4, fig.width=4, fig.cap='mcmc (hist), tmb (red), recalculated (blue)', fig.subcap = 1:ncol(allSamples)}
+```{r allHIst, fig.height=4, fig.width=4, fig.cap='mcmc (hist), tmb (red), recalculated (blue)', fig.subcap = 1:53, eval=FALSE}
 par(mar = c(1.5, 0, 0,0), bty='n', mgp=c(0.5, 0.2, 0))
 for(D in 1:ncol(allSamples)) {
   hist(allSamples[,D], prob=TRUE, breaks = 30, main='', 
@@ -369,7 +502,7 @@ lines(Sx,
 
 
 
-```{r remaximize}
+```{r remaximize, eval=FALSE}
 
 if(F){
   xx=forImportanceSampling(
@@ -412,7 +545,7 @@ ffFixedTheta$fn(firstMomentAll[,'mode',Dconfig])
 ffFixedTheta$fn(firstMomentAll[,'opt',Dconfig])
 ```
 
-```{r fromPriyanka}
+```{r fromPriyanka, eval=FALSE}
 thetaHere = -3.373762
 exp(thetaHere)^(-1/2)
 optHere = optim(res$mod$modesandhessians$mode[[Dconfig]],
