@@ -107,14 +107,37 @@ print(c(sd=exp(thetaHere)^(-0.5),
 
 
 impolrtant sampling weighted mle
-```{r isFit}
+```{r isFitFunctions}
+importanceSampleSkewT = function(Nsamps, mode, df, theta, densFunAll, skewScale = 1,  threshold = 0.999, 
+                                 dataForADFun, parametersForADFun) {
 
-importanceSampleSkewT = function(Nsamps, mode, df, theta, densFunAll, skewScale = 1,  threshold = 0.999) {
+if(missing(densFunAll)) {
+  cat("making ad fun")
+  densFunAll = TMB::MakeADFun(
+  data = dataForADFun, 
+  parameters = parametersForADFun,
+  hessian=TRUE, silent=TRUE,
+  DLL='BayesGP')
+  cat("... done\n")
+
+}
+
+    
+cat("hessian")
 
 hessian = densFunAll$he(c(mode, theta))
-hessian = hessian[-nrow(hessian), -nrow(hessian)]
-sigma2 = ((df-2)/df)*solve(hessian)
+cat("1")
+hessian = hessian[1:length(mode), 1:length(mode)]
+cat("2")
+hessian = as.matrix(Matrix::nearPD(hessian)$mat)
+cat("3")
+sigma1 = solve(hessian)
+return(sigma1)
+cat("4")
+sigma2 = ((df-2)/df)*sigma1
+cat("5")
 sigma2 = (sigma2 + t(sigma2))/2
+cat(" done\n")
 
 oneHess = function(x, ind, mode, theta){
   theArgs = mode 
@@ -122,10 +145,12 @@ oneHess = function(x, ind, mode, theta){
   densFunAll$he(c(theArgs, theta))[ind,ind]
 }
 
+cat("3rd")
 thirdDeriv = mapply(oneHess, 
   x = mode, ind = 1:length(mode),
-  MoreArgs = list(mode = mode, theta = thetaHere)
+  MoreArgs = list(mode = mode, theta = theta)
 )
+cat(" done\n")
 
 skew = thirdDeriv * skewScale
 
@@ -170,36 +195,37 @@ theSnFit = sn::msn.mle(
 
 theSnFit$dp
 }
-
+```
+```{r isFitTest, eval=FALSE}
 Dconfig = 1
 stuff = importanceSampleSkewT(
   mode = res$mod$modesandhessians$mode[[Dconfig]],
   theta = as.list(res$mod$modesandhessians$theta)[[Dconfig]],
     Nsamps = 2e5,
-    densFunAll = theDens,
+   dataForADFun = res$mod$optresults$ff$env$data,
+   parametersForADFun = res$mod$optresults$ff$env$parameters,
     df = 40, 
     skewScale = 1,
    threshold = 0.999
 )
+```
 
-
-
+```{r isFit, cache=TRUE}
 fitMle = parallel::mcmapply(
   importanceSampleSkewT,
   mode = res$mod$modesandhessians$mode,
   theta = as.list(res$mod$modesandhessians$theta),
   MoreArgs = list( 
     Nsamps = 2e5,
-    densFunAll = theDens,
     df = 40, 
     skewScale = 1,
-   threshold = 0.999
+   threshold = 0.999,
+   dataForADFun = res$mod$optresults$ff$env$data,
+   parametersForADFun = res$mod$optresults$ff$env$parameters
   ),
-  mc.cores = 1, 
+  mc.cores = 2, 
   SIMPLIFY=FALSE
 )
-
-
 ```
 
 ```{r plotFitMle, fig.cap = 'Intercept, SN (blue) and N (red)', fig.subcap = 1:length(fitMle), fig.height=4,fig.width=4}
