@@ -168,7 +168,7 @@ theProb = theProb/sum(theProb)
 
 
 theOrder = order(theProb, decreasing=TRUE)
-toKeep = min(which(cumsum(theProb[theOrder]) > 0.999))
+toKeep = min(which(cumsum(theProb[theOrder]) > 0.995))
 toKeep = which(theOrder < toKeep)
 
 sampsSub = samples_T1[toKeep, ]
@@ -177,22 +177,25 @@ sampsSub = samples_T1[toKeep, ]
 theW = theProb[toKeep]
 theW = length(theW) * theW / sum(theW)
 
+moment1=apply(samples_T1 *theProb, 2, sum)
+
+
 theSnFit = sn::msn.mle(
   x = matrix(1,nrow(sampsSub), 1),
   y=sampsSub, 
   opt.method='BFGS', 
   w = theW,
   start = list(
-  beta = matrix(apply(sampsSub, 2, mean), nrow=1),
+  beta = moment1,
   Omega = var(sampsSub),
-  alpha = skew/10
+  alpha = skew/100
   ),
   trace = FALSE,
   control=list( 
-   parscale = rep(c(1e-1, 1e4), each=length(mode)))
+   parscale = rep(c(1, 1e4), each=length(mode)))
 )
 
-theSnFit$dp$moment1 = apply(samples_T1 *theProb, 2, sum)
+theSnFit$dp$moment1 = moment1
 
 theSnFit$dp
 }
@@ -220,7 +223,7 @@ fitMle = parallel::mcmapply(
   mode = res$mod$modesandhessians$mode,
   theta = as.list(res$mod$modesandhessians$theta),
   MoreArgs = list( 
-    Nsamps = 3e5,
+    Nsamps = 1e5,
     df = 40, 
     skewScale = 1,
    threshold = 0.999,
@@ -295,11 +298,12 @@ TMB::compile(theCppFile)
 ```
 
 
-test optim again.
+MCMC with fixed theta
+
 ```{r theAdFun}
 theDll <- dyn.load(TMB::dynlib(theCppFileSansExt))
 
-Dconfig = 3
+Dconfig = 4
 ffFixedTheta <- TMB::MakeADFun(
       data = c(theDens$env$data, 
         list(theta = res$mod$modesandhessians$theta[Dconfig])),
@@ -307,19 +311,6 @@ ffFixedTheta <- TMB::MakeADFun(
       DLL = theDll[[1]],
       silent=TRUE
 )
-```
-
-
-
-
-
-
-
-
-
-MCMC with fixed theta
-
-```{r mcmc, cache=TRUE}
 
 default_option_list <- BayesGP::get_default_option_list_MCMC(
   list(chains=4, cores=4, warmup=1000))
