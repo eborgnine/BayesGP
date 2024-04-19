@@ -192,6 +192,8 @@ theSnFit = sn::msn.mle(
    parscale = rep(c(1e-1, 1e4), each=length(mode)))
 )
 
+theSnFit$dp$moment1 = apply(samples_T1 *theProb, 2, sum)
+
 theSnFit$dp
 }
 ```
@@ -217,7 +219,7 @@ fitMle = parallel::mcmapply(
   mode = res$mod$modesandhessians$mode,
   theta = as.list(res$mod$modesandhessians$theta),
   MoreArgs = list( 
-    Nsamps = 1e5,
+    Nsamps = 2e5,
     df = 40, 
     skewScale = 1,
    threshold = 0.999,
@@ -237,27 +239,30 @@ sqrt2overpi = sqrt(2/pi)
 
 for(Dconfig  in 1:length(fitMle)) {
 
-plot(Sx, 
-  dnorm(Sx, 
-    mean=res$mod$modesandhessians$mode[[Dconfig]][Dpar], 
-    sd=sqrt(solve(res$mod$modesandhessians$H[[Dconfig]])[Dpar,Dpar])
-  ), type='l', xlab='',
-  col='red')
-
-
 theScale = sqrt(fitMle[[Dconfig]]$Omega[Dpar,Dpar])
 delta = fitMle[[Dconfig]]$alpha[Dpar] / sqrt(1 + fitMle[[Dconfig]]$alpha[Dpar]^2)
 theMeanSn = fitMle[[Dconfig]]$beta[1,Dpar] + theScale * delta * sqrt2overpi
 
-lines(Sx, 
-  sn::dsn(Sx, 
+theY = cbind(
+  n =   dnorm(Sx, 
+    mean=res$mod$modesandhessians$mode[[Dconfig]][Dpar], 
+    sd=sqrt(solve(res$mod$modesandhessians$H[[Dconfig]])[Dpar,Dpar])
+  ),
+  sn = sn::dsn(Sx, 
     xi = fitMle[[Dconfig]]$beta[1,Dpar],
     omega = theScale,
     alpha = fitMle[[Dconfig]]$alpha[Dpar]
-  ), 
-  col='blue')
+  )
+}
+
+matplot(Sx, theY, xlim = c(1,8),
+  type='l', xlab='',
+  col=c('red','blue'))
+
+
+
 abline(v = res$mod$modesandhessians$mode[[Dconfig]][Dpar], col='red', lwd=3)
-abline(v= fitMle[[Dconfig]]$moments[Dpar,1], col='blue', lwd=3, lty=2)
+abline(v= fitMle[[Dconfig]]$moment1[Dpar], col='blue', lwd=3, lty=2)
 abline(v=theMeanSn, col='green', lwd=3,lty=3)
 
 }
