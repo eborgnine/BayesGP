@@ -126,16 +126,11 @@ if(missing(densFunAll)) {
 cat("hessian")
 
 hessian = densFunAll$he(c(mode, theta))
-cat("1")
 hessian = hessian[1:length(mode), 1:length(mode)]
-cat("2")
 hessian = as.matrix(Matrix::nearPD(hessian)$mat)
-cat("3")
 theEigen = eigen(hessian)
-sigma1 = (theEigen$vectors) %*% diag(1/theEigen$values) %*% solve(theEigen$vectors)  
-cat("4")
+sigma1 = (theEigen$vectors) %*% diag(1/theEigen$values) %*% t(theEigen$vectors)  
 sigma2 = ((df-2)/df)*sigma1
-cat("5")
 sigma2 = (sigma2 + t(sigma2))/2
 cat(" done\n")
 
@@ -150,23 +145,29 @@ thirdDeriv = mapply(oneHess,
   x = mode, ind = 1:length(mode),
   MoreArgs = list(mode = mode, theta = theta)
 )
-cat(" done\n")
+cat(" 3done\n")
 
 skew = thirdDeriv * skewScale
 
+cat("samples")
 samples_T1 = sn::rmst(
   Nsamps, xi = mode, 
   Omega = sigma2, 
   alpha =skew,
   nu=df)
+cat(" sdone\n")
 
+cat("dens")
 densProp = sn::dmst(
   samples_T1,xi = mode, 
   Omega = sigma2, alpha =skew,
   nu=df,
   log=TRUE)
+cat(" ddone\n")
 
+cat("lik")
 densData = -apply(cbind(samples_T1, theta), 1, densFunAll$fn)
+cat(" ldone\n")
 
 theProb = densData - densProp
 theProb = theProb - max(theProb)
@@ -231,7 +232,7 @@ fitMle = parallel::mcmapply(
    dataForADFun = res$mod$optresults$ff$env$data,
    parametersForADFun = res$mod$optresults$ff$env$parameters
   ),
-  mc.cores = 2, 
+  mc.cores = 1, 
   SIMPLIFY=FALSE
 )
 ```
