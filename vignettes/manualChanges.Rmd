@@ -159,10 +159,11 @@ theSnFit = sn::msn.mle(
   opt.method='BFGS', 
   w = theProb[toKeep],
   start = list(
-  beta = apply(sampsSub, 2, mean),
+  beta = matrix(apply(sampsSub, 2, mean), nrow=1),
   Omega = var(sampsSub),
   alpha = skew/10
   ),
+  trace = TRUE,
   control=list(maxit=1e6,  trace=FALSE, reltol = 1e-9, 
    parscale = rep(c(1e-1, 1e4), each=length(mode)))
 )
