@@ -180,7 +180,7 @@ theW = length(theW) * theW / sum(theW)
 theSnFit = sn::msn.mle(
   x = matrix(1,nrow(sampsSub), 1),
   y=sampsSub, 
-  opt.method='CG', 
+  opt.method='BFGS', 
   w = theW,
   start = list(
   beta = matrix(apply(sampsSub, 2, mean), nrow=1),
@@ -219,7 +219,7 @@ fitMle = parallel::mcmapply(
   mode = res$mod$modesandhessians$mode,
   theta = as.list(res$mod$modesandhessians$theta),
   MoreArgs = list( 
-    Nsamps = 2e5,
+    Nsamps = 3e5,
     df = 40, 
     skewScale = 1,
    threshold = 0.999,
@@ -253,7 +253,7 @@ theY = cbind(
     omega = theScale,
     alpha = fitMle[[Dconfig]]$alpha[Dpar]
   )
-}
+)
 
 matplot(Sx, theY, xlim = c(1,8),
   type='l', xlab='',
@@ -271,78 +271,10 @@ abline(v=theMeanSn, col='green', lwd=3,lty=3)
 
 
 
-do importance sampling to get first moment
-
-```{r importancesampling, eval=FALSE}
-forImportanceSampling = function(Nsamps, mode, hessian, df, theta, densFun) {
-
-sigma2 = ((df-2)/df)*solve(hessian)
-samples_T1 = mvtnorm::rmvt(
-  Nsamps, delta = mode, sigma = sigma2, df=df)
-samples_T1 = rbind(samples_T1, mode)
-densProp = mvtnorm::dmvt(
-  samples_T1, delta = mode, sigma = sigma2, 
-  df=df, log=TRUE)
-densData = -apply(cbind(samples_T1, theta), 1, densFun)
-
-theProb = exp(densData - densProp+50)
-
-theNewMode = samples_T1[which.max(densData),]
-
-newOpt = optim(theNewMode, function(xx) densFun(c(xx,theta)), method='BFGS')
-
-return(cbind(
-  moment1 = apply(samples_T1 * theProb, 2, sum)/ sum(theProb) ,
-  mode = theNewMode,
-  opt = newOpt$par
-  ))
-
-}
-
-Dconfig = 1
 
 
 
-if(F){
-  xx=forImportanceSampling(
-  Nsamps = 100, 
-  mode = res$mod$modesandhessians$mode[[Dconfig]],
-  hessian =  res$mod$modesandhessians$H[[Dconfig]],
-  theta = res$mod$modesandhessians$theta[Dconfig],
-  df = 4,
-  densFun = theDens$fn
-)
-}
-
-firstMomentAllList = parallel::mcmapply(
-  forImportanceSampling,
-  mode = res$mod$modesandhessians$mode,
-  hessian = res$mod$modesandhessians$H,
-  theta = as.list(res$mod$modesandhessians$theta),
-  MoreArgs = list( 
-    Nsamps = 10000,
-    df = 5, 
-    densFun = theDens$fn
-  ),
-  mc.cores = 1, 
-  SIMPLIFY=FALSE
-)
-
-firstMomentAll = do.call(abind::abind, 
-  c(firstMomentAllList, list(along = 3)))
-
-firstMomentAll[51,,]
-```
-
-
-
-
-
-
-
-
-
-```{r customCpp, cache=FALSE, stuff=1, eval=FALSE}
+```{r customCpp, cache=TRUE}
 theCpp =list.files(system.file("extsrc", package="BayesGP"), full.names=TRUE)
 theCpp = scan(theCpp, what='a', sep='\n')
 
@@ -363,10 +295,10 @@ TMB::compile(theCppFile)
 
 
 test optim again.
-```{r theAdFun, eval=FALSE}
+```{r theAdFun}
 theDll <- dyn.load(TMB::dynlib(theCppFileSansExt))
 
-Dconfig = 1
+Dconfig = 3
 ffFixedTheta <- TMB::MakeADFun(
       data = c(theDens$env$data, 
         list(theta = res$mod$modesandhessians$theta[Dconfig])),
@@ -374,31 +306,6 @@ ffFixedTheta <- TMB::MakeADFun(
       DLL = theDll[[1]],
       silent=TRUE
 )
-
-optHere1 = optim(
-  rnorm(
-    length(res$mod$modesandhessians$mode[[Dconfig]]),
-    mean=firstMomentAll[,'mode',Dconfig],
-    sd = 0.01),
-  fn = ffFixedTheta$fn, gr = ffFixedTheta$gr,
-  method="SANN",
-  control = list(maxit=1e4, reltol=1e-9))
-
-optHere2 = optim(
-  rnorm(
-    length(res$mod$modesandhessians$mode[[Dconfig]]),
-    mean=firstMomentAll[,'mode',Dconfig],
-    sd = 0.01),
-  fn = theDens2, gr = theGr2,
-  theta = ffFixedTheta$env$data$theta,
-  method="SANN",
-  control = list(maxit=1e4, reltol=1e-9))
-
-print(c(sd=exp(ffFixedTheta$env$data$theta)^(-0.5),
-  orig = res$mod$modesandhessians$mode[[Dconfig]][51], 
-  new = firstMomentAll[51,'mode',Dconfig],
-  opt = optHere$par[51],
-  opt2 = optHere2$par[51]))
 ```
 
 
@@ -411,12 +318,12 @@ print(c(sd=exp(ffFixedTheta$env$data$theta)^(-0.5),
 
 MCMC with fixed theta
 
-```{r mcmc, cache=TRUE, eval=FALSE}
+```{r mcmc, cache=TRUE}
 
 default_option_list <- BayesGP::get_default_option_list_MCMC(
-  list(chains=16, cores=8, warmup=4000))
+  list(chains=4, cores=4, warmup=1000))
 
-Nsamples = 10000
+Nsamples = 2000
 
 options(mc.cores = parallel::detectCores())
 rstan::rstan_options(auto_write = TRUE)
@@ -432,79 +339,12 @@ mod <- tmbstan::tmbstan(
         laplace = default_option_list$laplace
 )
 
-allSamples = rstan::extract(mod)$par
-```
-
-
-```{r allSamplesPlot, eval=TRUE, fig.cap = 'marginals v joint', fig.subcap = c('joint','m1','m2'), eval=FALSE}
-
-lims1 = quantile(allSamples[,51], c(0.05, 0.95))
-lims2 = quantile(allSamples[,52], c(0.05, 0.95))
-
-theDensK = MASS::kde2d(allSamples[,51], allSamples[, 52], h=0.4, n=300,
-  lims = c(lims1, lims2))
-
-theCol = mapmisc::colourScale(theDensK$z,
-  breaks = sort(unique(c( 
-    seq(0, max(theDensK$z)^3, len=7)^(1/3), 
-    seq(to = ceiling(200*max(theDensK$z))/200, len=6, by=0.005)
-  ))),
-   col= terrain.colors, dec=3,
-  style = 'fixed', rev=FALSE)
-
-image(theDensK$x, theDensK$y, theDensK$z, xlab='intercept', ylab='coef',
-xlim = lims1, lims2, breaks = theCol$breaks, col=theCol$col)
-
-points(res$mod$modesandhessians$mode[[Dconfig]][51],
-res$mod$modesandhessians$mode[[Dconfig]][52])
-
-mapmisc::legendBreaks("topright", theCol)
-
-theMax = drop(arrayInd(which.max(theDensK$z), dim(theDensK$z)))
-
-theDensK$x[theMax[1]]
-
-
-densIntercept = apply(theDensK$z, 1, sum)* diff(theDensK$x[1:2])
-theDensK$x[which.max(densIntercept)]
-plot(theDensK$x, densIntercept)
-
-
-plot(theDensK$y, apply(theDensK$z, 2, sum)* diff(theDensK$y[1:2]))
-
-
-allSamplesSub = allSamples[allSamples[,51] > 2.5 &  allSamples[,51] < 4.5 &
-  allSamples[,52] > -2.5  & allSamples[,52] < -0.5, c(51, 52)]
-  if(F) {
-theDens2 = LogConcDEAD::mlelcd(
-  allSamplesSub, 
-  sigmatol = 1e-3, ytol=1e-2, integraltol = 1e-2, Jtol = 0.1, chtol = 1e-3,
-  verbose=1)
-
-#plot(allSamples[,c(51, 52)], pch='.')
-}
-```
-
-
-```{r fitSn, eval=TRUE, cache=TRUE, eval=FALSE}
-theSnFit = sn::msn.mle(y=allSamples, 
-  opt.method='BFGS', 
-  start = list(
-  beta = apply(allSamples, 2, mean),
-  Omega = var(allSamples),
-  alpha = rep(0, ncol(allSamples))
-  ), 
-  control=list(maxit=1e6,  trace=TRUE, reltol = 1e-9, 
-    parscale = rep(c(1e-1, 1e8), each=ncol(allSamples)))
-)
-
-#matrix(theSnFit$opt.method$par, ncol=2)
-#theSnFit$opt.method[grep("par", names(theSnFit$opt.method), invert=TRUE)]
+allSamples = rstan::extract(mod)[[1]]
 ```
 
 
 
-```{r allHIst, fig.height=4, fig.width=4, fig.cap='mcmc (hist), tmb (red), recalculated (blue)', fig.subcap = 1:53, eval=FALSE}
+```{r allHIst, fig.height=4, fig.width=4, fig.cap='mcmc (hist), normal (red), sn (blue)', fig.subcap = 1:length(res$mod$modesandhessians$mode[[1]])}
 par(mar = c(1.5, 0, 0,0), bty='n', mgp=c(0.5, 0.2, 0))
 for(D in 1:ncol(allSamples)) {
   hist(allSamples[,D], prob=TRUE, breaks = 30, main='', 
@@ -517,65 +357,27 @@ lines(Sx,
     sd=sqrt(solve(res$mod$modesandhessians$H[[Dconfig]])[D,D])
   ),
   col='red')
-abline(v=optHere$par[D], col='yellow')
-abline(v=firstMomentAll[D,'moment1', Dconfig], col='green')
-abline(v=firstMomentAll[D,'mode', Dconfig], col='black')
-abline(v=mean(allSamples[,D]), col='grey')
 lines(Sx, 
   sn::dsn(Sx, 
-    xi = theSnFit$dp$beta[1,D],
-    omega = sqrt(theSnFit$dp$Omega[D,D]),
-    alpha = theSnFit$dp$alpha[D]
+    xi = fitMle[[Dconfig]]$beta[1,D],
+    omega = sqrt(fitMle[[Dconfig]]$Omega[D,D]),
+    alpha = fitMle[[Dconfig]]$alpha[D]
   ), 
   col='blue')
+
+abline(v=fitMle[[Dconfig]]$moment1[D], col='green', lwd=3)
+abline(v=mean(allSamples[,D]), col='black')
+
+theScale = sqrt(fitMle[[Dconfig]]$Omega[D,D])
+delta = fitMle[[Dconfig]]$alpha[D] / sqrt(1 + fitMle[[Dconfig]]$alpha[D]^2)
+theMeanSn = fitMle[[Dconfig]]$beta[1,D] + theScale * delta * sqrt2overpi
+
+abline(v=theMeanSn, col='blue')
+
 }
 ```
 
 
-
-
-```{r remaximize, eval=FALSE}
-
-if(F){
-  xx=forImportanceSampling(
-  Nsamps = 100, 
-  mode = res$mod$modesandhessians$mode[[Dconfig]],
-  hessian =  res$mod$modesandhessians$H[[Dconfig]],
-  df = 4,
-  theta = NULL,
-  densFun = ffFixedTheta$fn
-)
-
-toOpt = function(xx, x51) { 
-  newxx = c(xx[1:50], x51, xx[-(1:50)])
-  ffFixedTheta$fn(xx) * xx
-}
-int()
-
-
-}
-
-newMean = apply(allSamples, 2, mean)
-rbind(
-newmean=c(newMean,
-  theDens2(newMean, res$mod$modesandhessians$theta[Dconfig])),
-simmode=c(firstMomentAll[,'mode',Dconfig],
- theDens2(firstMomentAll[,'mode',Dconfig], 
-  res$mod$modesandhessians$theta[Dconfig])),
-newopt=c(firstMomentAll[,'opt',Dconfig],
-  theDens2(firstMomentAll[,'opt',Dconfig], 
-  res$mod$modesandhessians$theta[Dconfig])),
-orig=c(res$mod$modesandhessians$mode[[Dconfig]], 
-  theDens2(
-  res$mod$modesandhessians$mode[[Dconfig]], 
-  res$mod$modesandhessians$theta[Dconfig]))
-)[,-(1:47)]
-
-ffFixedTheta$fn(newMean)
-ffFixedTheta$fn(res$mod$modesandhessians$mode[[Dconfig]])
-ffFixedTheta$fn(firstMomentAll[,'mode',Dconfig])
-ffFixedTheta$fn(firstMomentAll[,'opt',Dconfig])
-```
 
 ```{r fromPriyanka, eval=FALSE}
 thetaHere = -3.373762
