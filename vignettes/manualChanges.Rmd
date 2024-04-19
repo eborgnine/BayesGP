@@ -131,14 +131,8 @@ hessian = hessian[1:length(mode), 1:length(mode)]
 cat("2")
 hessian = as.matrix(Matrix::nearPD(hessian)$mat)
 cat("3")
-<<<<<<< HEAD
-sigma1 = eigen(hessian)
-return(sigma1)
-sigma1 = solve(hessian)
-=======
 theEigen = eigen(hessian)
 sigma1 = (theEigen$vectors) %*% diag(1/theEigen$values) %*% solve(theEigen$vectors)  
->>>>>>> cd1d3a58bd0a177073a7701246f5307b55401d95
 cat("4")
 sigma2 = ((df-2)/df)*sigma1
 cat("5")
