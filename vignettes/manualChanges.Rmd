@@ -8,6 +8,7 @@ vignette: >
 ---
 
 ```{r data}
+#devtools::install_github("Bayes-GP/BayesGP", ref='development')   
 data('bacteria', package= 'MASS')
 bacteria$Yresp = as.numeric(bacteria$y == 'y')
 bacteria$treatment = as.numeric(bacteria$trt != 'placebo')
@@ -21,11 +22,12 @@ summary(glm(Yresp ~ + week2 + treatment, data=bacteria, family=binomial))$coef
 
 ```{r bayesGp}
 res = BayesGP::model_fit(Yresp~ week2 + treatment +
+
                            f(ID, model ="IID", sd.prior= list(prior= "exp",
                           param =list(u =1, alpha=0.5))),
                            aghq_k = 10,
 #                         adfun.options = list(inner.control = list(tol=1e-9)),
-                           data = bacteria, family='binomial', size = 'ones')
+                           data = bacteria, family='Binomial', size = 'ones')
 
 summary(res)
 # make summary like glm, summary(), returns a list, with a print method
@@ -136,17 +138,29 @@ Dconfig = 1
 
 
 
+if(F){
+  xx=forImportanceSampling(
+  Nsamps = 100, 
+  mode = res$mod$modesandhessians$mode[[Dconfig]],
+  hessian =  res$mod$modesandhessians$H[[Dconfig]],
+  theta = res$mod$modesandhessians$theta[Dconfig],
+  df = 4,
+  densFun = theDens$fn
+)
+}
 
-firstMomentAllList = parallel::mcmapply(forImportanceSampling,
+firstMomentAllList = parallel::mcmapply(
+  forImportanceSampling,
   mode = res$mod$modesandhessians$mode,
   hessian = res$mod$modesandhessians$H,
   theta = as.list(res$mod$modesandhessians$theta),
   MoreArgs = list( 
-    Nsamps = 5000,
+    Nsamps = 10000,
     df = 5, 
     densFun = theDens$fn
   ),
-  mc.cores = 8, SIMPLIFY=FALSE
+  mc.cores = 1, 
+  SIMPLIFY=FALSE
 )
 
 firstMomentAll = do.call(abind::abind, 
@@ -163,13 +177,12 @@ firstMomentAll[51,,]
 
 
 
-```{r customCpp, cache=TRUE}
+```{r customCpp, cache=FALSE, stuff=1}
 theCpp =list.files(system.file("extsrc", package="BayesGP"), full.names=TRUE)
 theCpp = scan(theCpp, what='a', sep='\n')
 
 theCpp = gsub("PARAMETER_VECTOR[(]theta[)];", "DATA_VECTOR(theta);", theCpp)
 theCpp = theCpp[grep("lpT [+]=", theCpp, invert=TRUE)]
-
 
 theCppFile = tempfile(fileext='.cpp')
 theCppFileSansExt = gsub("[.]cpp$", "", theCppFile)
@@ -183,13 +196,15 @@ write(theCpp, theCppFile)
 TMB::compile(theCppFile)
 ```
 
+
 test optim again.
 ```{r theAdFun}
 theDll <- dyn.load(TMB::dynlib(theCppFileSansExt))
 
 Dconfig = 1
 ffFixedTheta <- TMB::MakeADFun(
-      data = c(theDens$env$data, list(theta = res$mod$modesandhessians$theta[Dconfig])),
+      data = c(theDens$env$data, 
+        list(theta = res$mod$modesandhessians$theta[Dconfig])),
       parameters = list(W=rep(1,length(theDens$env$parameters$W))),
       DLL = theDll[[1]],
       silent=TRUE
@@ -232,6 +247,7 @@ print(c(sd=exp(ffFixedTheta$env$data$theta)^(-0.5),
 MCMC with fixed theta
 
 ```{r mcmc, cache=TRUE}
+
 default_option_list <- BayesGP::get_default_option_list_MCMC(
   list(chains=16, cores=8, warmup=4000))
 
@@ -260,7 +276,7 @@ allSamples = rstan::extract(mod)$par
 lims1 = quantile(allSamples[,51], c(0.05, 0.95))
 lims2 = quantile(allSamples[,52], c(0.05, 0.95))
 
-theDensK = MASS::kde2d(allSamples[,51], allSamples[, 52], h=0.3, n=300,
+theDensK = MASS::kde2d(allSamples[,51], allSamples[, 52], h=0.4, n=300,
   lims = c(lims1, lims2))
 
 theCol = mapmisc::colourScale(theDensK$z,
@@ -316,6 +332,7 @@ theSnFit = sn::msn.mle(y=allSamples,
   control=list(maxit=1e6,  trace=TRUE, reltol = 1e-9, 
     parscale = rep(c(1e-1, 1e8), each=ncol(allSamples)))
 )
+
 #matrix(theSnFit$opt.method$par, ncol=2)
 #theSnFit$opt.method[grep("par", names(theSnFit$opt.method), invert=TRUE)]
 ```
@@ -356,7 +373,7 @@ lines(Sx,
 
 if(F){
   xx=forImportanceSampling(
-  Nsamps = 10000, 
+  Nsamps = 100, 
   mode = res$mod$modesandhessians$mode[[Dconfig]],
   hessian =  res$mod$modesandhessians$H[[Dconfig]],
   df = 4,
