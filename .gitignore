@@ -10,3 +10,14 @@ inst/doc
 /doc/
 /Meta/
 /vignettes/manualChanges_cache
+cache/__packages
+cache/bayesBrms_489e2cd6f2d8fbd07aef2df9b412c0b1.RData
+cache/bayesBrms_489e2cd6f2d8fbd07aef2df9b412c0b1.rdb
+cache/bayesBrms_489e2cd6f2d8fbd07aef2df9b412c0b1.rdx
+cache/theMcmc_56625eef92b5eec845ac879ae1108054.RData
+cache/theMcmc_56625eef92b5eec845ac879ae1108054.rdb
+cache/theMcmc_56625eef92b5eec845ac879ae1108054.rdx
+*.png
+manualChanges.html
+comparison.html
+*.md

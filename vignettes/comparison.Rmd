@@ -1,0 +1,281 @@
+
+
+# Pisa data
+
+[https://m-clark.github.io/generalized-additive-models/application.html](https://m-clark.github.io/generalized-additive-models/application.html#multiple-features)
+
+```{r data}
+pisa = read.table(url('https://raw.githubusercontent.com/m-clark/generalized-additive-models/master/data/pisasci2006.csv'), sep=',', header=TRUE)
+pisa[1:3,c('Country','Overall','Income','Edu','Health')]
+pisaSub = na.omit(pisa[,c('Country','Overall','Income','Edu','Health')])
+```
+
+# MGCV
+
+```{r mgcv}
+library('mgcv')
+res_mgcv = gam(
+	Overall ~ 
+	s(Income, k=30, pc = mean(range(pisa$Income,na.rm=TRUE))) + 
+	s(Edu, k=30, pc = mean(range(pisa$Edu,na.rm=TRUE))) +
+	s(Health, k=30, pc = mean(range(pisa$Health,na.rm=TRUE))),
+	data = pisa, method='ML')
+```
+
+
+```{r paramsMgcv}
+knitr::kable(summary(res_mgcv)$p.table, digits=3 )
+knitr::kable(summary(res_mgcv)$s.table, digits=3)
+```
+
+```{r plotMgcv, fig.cap='MGCV results', fig.subcap = c('Income','Edu','Health')}
+plot(res_mgcv, select=grep('Income', names(res_mgcv$sp)))
+plot(res_mgcv, select=grep('Edu', names(res_mgcv$sp)))
+plot(res_mgcv, select=grep('Health', names(res_mgcv$sp)))
+```
+
+```{r predMgcv}
+as.data.frame(
+	predict(res_mgcv, 
+		newdata = data.frame(
+			Income = c(0.5, 0.6),
+			Edu = c(0.8, 0.9),
+			Health = c(0.55, 0.65)
+		), se.fit=TRUE)
+)
+```
+
+
+# INLA
+
+
+```{r inla}
+library('INLA')
+theValues = lapply(
+	pisaSub[,c("Income","Health","Edu")], 
+	function(xx) sort(unique(xx)))
+Amat = lapply(theValues, function(xx) {
+	res = matrix(0,1,length(xx))
+	res[1, which.min(abs(xx - mean(range(xx))))] = 1
+	res
+	}
+)
+res_inla = inla(
+	Overall ~ 
+	f(Income, model='rw2', prior='pc.prec', param=c(1, 0.5),
+		values = theValues$Income, constr=FALSE,
+		extraconstr = list(A = Amat$Income, e=0)
+	) + 
+	f(Edu, model='rw2', prior='pc.prec', param=c(1, 0.5),
+		values = theValues$Edu, constr=FALSE,
+		extraconstr = list(A = Amat$Edu, e=0)
+	) + 
+	f(Health, model='rw2', prior='pc.prec', param=c(1, 0.5),
+		values = theValues$Health, constr=FALSE,
+		extraconstr = list(A = Amat$Health, e=0)
+	),
+	control.family = list(prior='pc.prec', param = c(10, 0.5)),
+	control.fixed = list(mean.intercept=425, prec.intercept = 10^(-2)),
+	control.compute = list(config=TRUE),
+	data = pisaSub)
+```
+
+
+```{r paramsInla}
+qCols = grep("quant", colnames(res_inla$summary.hyperpar), value=TRUE)
+res_inla$summary.sd = 1/sqrt(res_inla$summary.hyperpar[,qCols])
+rownames(res_inla$summary.sd) = gsub("Precision", "sd", rownames(res_inla$summary.sd))
+colnames(res_inla$summary.sd) = paste0(1-as.numeric(gsub("quant","", qCols)), 'quant')
+res_inla$summary.sd = res_inla$summary.sd[,order(colnames(res_inla$summary.sd))]
+knitr::kable(rbind(
+	res_inla$summary.fixed[,colnames(res_inla$summary.sd)],
+	res_inla$summary.sd), digits=2)
+```
+
+```{r sampleInla}
+samp_inla = inla.posterior.sample(10, res_inla)
+sampG = as.data.frame(lapply(samp_inla, function(xx) xx$latent))
+```
+
+
+```{r plotInla, fig.cap='INLA results', fig.subcap = c('Income','Edu','Health')}
+matplot(res_inla$summary.random$Income$ID, res_inla$summary.random$Income[,qCols],
+	lty=c(2,1,2), type='l', col='black')
+matlines(theValues$Income,
+	sampG[paste0("Income:", 1:length(theValues$Income)),],
+	col='#FF000030', lty=1)
+
+matplot(res_inla$summary.random$Edu$ID, res_inla$summary.random$Edu[,qCols],
+	lty=c(2,1,2), type='l', col='black')
+matlines(theValues$Edu,
+	sampG[paste0("Edu:", 1:length(theValues$Edu)),],
+	col='#FF000030', lty=1)
+
+matplot(res_inla$summary.random$Health$ID, res_inla$summary.random$Health[,qCols],
+	lty=c(2,1,2), type='l', col='black')
+matlines(theValues$Health,
+	sampG[paste0("Health:", 1:length(theValues$Health)),],
+	col='#FF000030', lty=1)
+```
+
+```{r plotInlaPar, fig.subcap = c('Intercept','Obs', 'Income','Edu','Health')}
+plot(res_inla$marginals.fixed$'(Intercept)', type='l')
+xseq = seq(par('usr')[1], par('usr')[2], len=1000)
+lines(xseq,
+	dnorm(xseq, 
+		res_inla$.args$control.fixed$mean.intercept,
+		1/sqrt(res_inla$.args$control.fixed$prec.intercept)
+	), lty=2)
+
+plot(inla.tmarginal(function(xx) 1/sqrt(xx),
+	res_inla$marginals.hyperpar[[
+		grep('observations', 
+			names(res_inla$marginals.hyperpar))]]), 
+	type='l')
+xseq = seq(par('usr')[1], par('usr')[2], len=1000)
+par=res_inla$all.hyper$family[[1]]$hyper$theta1$param
+lines(xseq, dexp(xseq,-log(1-par[2])/par[1]), lty=2)
+
+Ssd = unlist(lapply(res_inla$all.hyper$random, function(xx) xx$hyperid))
+
+
+plot(rbind(c(0,0), inla.tmarginal(function(xx) 1/sqrt(xx),
+	res_inla$marginals.hyperpar[[
+		grep('Income', 
+			names(res_inla$marginals.hyperpar))]])), 
+	type='l',
+	xlim = c(0, 2/sqrt(res_inla$summary.hyperpar['Precision for Income','0.025quant']))
+)
+xseq = seq(par('usr')[1], par('usr')[2], len=1000)
+par = res_inla$all.hyper$random[[grep("Income", Ssd)]]$hyper$theta$param
+lines(xseq, dexp(xseq,-log(1-par[2])/par[1]), lty=2)
+
+plot(rbind(c(0,0), inla.tmarginal(function(xx) 1/sqrt(xx),
+	res_inla$marginals.hyperpar[[
+		grep('Edu', 
+			names(res_inla$marginals.hyperpar))]])), 
+	type='l',
+	xlim = c(0, 2/sqrt(res_inla$summary.hyperpar['Precision for Edu','0.025quant']))
+)
+xseq = seq(par('usr')[1], par('usr')[2], len=1000)
+par = res_inla$all.hyper$random[[grep("Edu", Ssd)]]$hyper$theta$param
+lines(xseq, dexp(xseq,-log(1-par[2])/par[1]), lty=2)
+
+
+
+plot(rbind(c(0,0), inla.tmarginal(function(xx) 1/sqrt(xx),
+	res_inla$marginals.hyperpar[[
+		grep('Health', 
+			names(res_inla$marginals.hyperpar))]])), 
+	type='l',
+	xlim = c(0, 2/sqrt(res_inla$summary.hyperpar['Precision for Health','0.025quant']))
+)
+xseq = seq(par('usr')[1], par('usr')[2], len=1000)
+par = res_inla$all.hyper$random[[grep("Health", Ssd)]]$hyper$theta$param
+lines(xseq, dexp(xseq,-log(1-par[2])/par[1]), lty=2)
+```
+
+# BayesGP
+
+```{r BayesGp}
+library('BayesGP')
+res_bayesgp <- model_fit(
+	Overall ~ 
+	f(Income, model='iwp', k=30, order = 3, 
+		initial_location = mean(range(pisaSub$Income,na.rm=TRUE)),
+		sd.prior = list(prior = "exp", param = list(u = 1, alpha = 0.5), h = 0.1),
+		boundary.prior = list(mean = 0, prec = 10^(-2))
+	) + 
+	f(Edu, order=3,model='iwp', 
+		initial_location = mean(range(pisaSub$Edu,na.rm=TRUE)),
+		sd.prior = list(prior = "exp", param = list(u = 1, alpha = 0.5), h = 0.1),
+		boundary.prior = list(mean = 0, prec = 10^(-2))) +
+	f(Health, order=3,model='iwp', 
+		initial_location = mean(range(pisaSub$Edu,na.rm=TRUE)),
+		sd.prior = list(prior = "exp", param = list(u = 1, alpha = 0.5), h = 0.1),
+		boundary.prior = list(mean = 0, prec = 10^(-2))),
+	control.family = list(sd.prior=10),
+	control.fixed = list(intercept=list(mean = 425, prec = 10^(-2))),
+	data=pisaSub, method='aghq'
+)
+```
+
+```{r bayesGpTable}
+bayesGpTable = do.call(data.frame,as.list(summary(res_bayesgp)))
+knitr::kable(bayesGpTable, digits=3)
+```
+
+
+```{r plotBayesGp, fig.cap='BayesGP results', fig.subcap = c('Income','Edu','Health')}
+qCols = paste0('q', c(0.025, 0.975, 0.5))
+
+for(D in c('Income','Edu','Health')) {
+predict_f <- predict(res_bayesgp, variable = D, include.intercept=FALSE)
+predict_f2 <- predict(res_bayesgp, variable = D, include.intercept=FALSE, only.samples=TRUE)
+matplot(predict_f[,1], predict_f[,qCols], type='l', lty=c(2,2,1), col='black')
+matlines(predict_f2[,1], predict_f2[, 2:11], lty=1, col='#FF000010')
+}
+```
+
+ TO DO: 
+
+- analytical posterior of fixed effects as mixture of normals
+- lower end of densities for SD, PSD always zero (unless lower 0.01 quantile is further from zero than from 0.99 quantile)
+- summary returns data frame instead of list
+
+```{r plotBayesGpPar, fig.subcap = c('Intercept','Obs', 'Income','Edu','Health')}
+thedens = para_density(res_bayesgp)
+plot(thedens$intercept, type='l')
+xseq = seq(par('usr')[1], par('usr')[2], len=1000)
+lines(xseq, dnorm(xseq, 
+	res_bayesgp$control.fixed$intercept$mean,
+	res_bayesgp$control.fixed$intercept$prec^(-1/2)),
+	 lty=2)
+
+matplot(thedens$family_sd[,'SD'], thedens$family_sd[,c('post','prior')],
+	type='l', lty=c(1,2), col='black', xaxs='i')
+
+matplot(thedens$Income[,'PSD'], thedens$Income[,c('post.PSD','prior.PSD')],
+	type='l', lty=c(1,2), col='black', xaxs='i',
+	xlim = c(0, 2*bayesGpTable[grep("Income", bayesGpTable$name), 'q0.975']))
+
+matplot(thedens$Edu[,'PSD'], thedens$Edu[,c('post.PSD','prior.PSD')],
+	type='l', lty=c(1,2), col='black', xaxs='i',
+		xlim = c(0, 2*bayesGpTable[grep("Edu", bayesGpTable$name), 'q0.975'])
+	)
+
+
+matplot(thedens$Health[,'PSD'], thedens$Health[,c('post.PSD','prior.PSD')],
+	type='l', lty=c(1,2), col='black', xaxs='i',
+	xlim = c(0, 2*bayesGpTable[grep("Health", bayesGpTable$name), 'q0.975'])
+)
+
+```
+
+
+
+
+# BayesGP MCMC
+
+```{r BayesGpMcmc}
+library('BayesGP')
+res_bayesgp_mcmc <- model_fit(
+	Overall ~ 
+	f(Income, model='iwp', k=30, order = 3, 
+		initial_location = mean(range(pisaSub$Income,na.rm=TRUE)),
+		sd.prior = list(prior = "exp", param = list(u = 1, alpha = 0.5), h = 0.1),
+		boundary.prior = list(mean = 0, prec = 10^(-2))
+	) + 
+	f(Edu, order=3,model='iwp', 
+		initial_location = mean(range(pisaSub$Edu,na.rm=TRUE)),
+		sd.prior = list(prior = "exp", param = list(u = 1, alpha = 0.5), h = 0.1),
+		boundary.prior = list(mean = 0, prec = 10^(-2))) +
+	f(Health, order=3,model='iwp', 
+		initial_location = mean(range(pisaSub$Edu,na.rm=TRUE)),
+		sd.prior = list(prior = "exp", param = list(u = 1, alpha = 0.5), h = 0.1),
+		boundary.prior = list(mean = 0, prec = 10^(-2))),
+	control.family = list(sd.prior=10),
+	control.fixed = list(intercept=list(mean = 425, prec = 10^(-2))),
+	data=pisaSub, method='mcmc'
+)
+```

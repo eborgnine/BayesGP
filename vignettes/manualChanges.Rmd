@@ -8,7 +8,8 @@ vignette: >
 ---
 
 ```{r data}
-#devtools::install_github("Bayes-GP/BayesGP", ref='development')   
+#devtools::install_github("Bayes-GP/BayesGP", ref='development')  
+#devtools::install_github("Bayes-GP/BayesGP@development")
 data('bacteria', package= 'MASS')
 bacteria$Yresp = as.numeric(bacteria$y == 'y')
 bacteria$treatment = as.numeric(bacteria$trt != 'placebo')
@@ -34,21 +35,41 @@ summary(res)
 # so we can do summary(res)$coef
 ```
 
+```{r fitInlaAll}
+library(INLA)
+fitInlaAll = INLA::inla(
+  Yresp ~ week2 + treatment+ f(ID, prior = 'pc.prec', param = c(u = 1, alpha = 0.5)),
+  data = bacteria, 
+  family='binomial', verbose=TRUE)
+```
 
-```{r bayesBrms, eval=FALSE}
+
+```{r bayesBrms, eval=TRUE, cache=TRUE}
 library(brms)
 fitBrms = brm(
   Yresp  ~ week2 + treatment + (1|ID),
   data = bacteria, family='bernoulli',  
-  prior= set_prior("normal(5, 0.001)", class="sd")
-)
+  prior= set_prior("exponential(1)", class="sd"),
+#  chains = 1, cores = 1, warmup = 100, iter = 1000, thin=1
+  chains=4, cores=4, warmup=1000,
+  iter = 100000, thin=50)
 fitBrms2 = rstan::extract(fitBrms$fit)
-library(INLA)
-fitInla = INLA::inla(
-  Yresp ~ week2 + treatment+ f(ID, initial=-3.373762, fixed=TRUE),
-  data = bacteria, 
-  family='binomial')
-fitInla$summary.fixed
+```
+
+```{r postTheta, echo=FALSE, fig.cap='sd', fig.subcap = c('sd','theta'), out.width='40%'}
+par(mar = c(4,4,0,0), bty='n')
+hist(fitBrms2$sd_1, prob=TRUE, breaks=100, xlab='sd')
+lines(INLA::inla.tmarginal(function(x) x^(-0.5), fitInlaAll$marginals.hyperpar[[1]]), col='blue')
+lines(BayesGP::var_density(res, 'ID')[,c('SD','post')], col='red')
+
+legend("topright", lty=1, lwd=2, col=c('black','blue','red'), legend = c('mcmc','inla','bayesgp'), bty='n')
+
+hist(log(fitBrms2$sd_1^(-2)), prob=TRUE, breaks=200, 
+  xlim = INLA::inla.qmarginal(c(0.001, 0.999), fitInlaAll$internal.marginals.hyperpar[[1]]),
+   xlab='theta')
+lines(fitInlaAll$internal.marginals.hyperpar[[1]], col='blue')
+lines(res$mod$marginals[[1]][,1], exp(res$mod$marginals[[1]][,2]), col='red') 
+legend("topright", lty=1, lwd=2, col=c('black','blue','red'), legend = c('mcmc','inla','bayesgp'), bty='n')
 ```
 
 
@@ -65,212 +86,280 @@ theDens = TMB::MakeADFun(
 ```
 
 
-test to see if we get a different mode if re-optimize
-```{r makeAdFun}
-theDens2 = function(W, theta) {
-  theDens$fn(c(W, theta))
-}
-theGr2 = function(W, theta) {
-  theDens$gr(c(W, theta))[1:length(W)]
-}
-theHessian2 = function(W, theta) {
-  theDens$gr(c(W, theta))[1:length(W)]  
-}
-```
+H = P D Pt
 
-```{r tesAdFun, cache=TRUE, eval=FALSE}
-for(Dconfig in c(3,5, 8)) {
-thetaHere = res$mod$modesandhessians$theta[Dconfig]
-
-startHere =   rnorm(
-    length(res$mod$modesandhessians$mode[[Dconfig]]),
-    mean=res$mod$modesandhessians$mode[[Dconfig]],
-    sd = 0.03)
-optHere = optim(
-  startHere,
-  fn = theDens2, gr = theGr2,
-  method="BFGS",
-  control = list(maxit=1e6, reltol=1e-9),
-  theta = thetaHere)
-optHere2 = optim(
-  startHere,
-  fn = theDens2, gr = theGr2,
-  method="SANN",
-  control = list(maxit=1e5, reltol=1e-8),
-  theta = thetaHere)
-print(c(sd=exp(thetaHere)^(-0.5),
-  orig = res$mod$modesandhessians$mode[[Dconfig]][51], 
-  new = optHere$par[51], val = optHere$value,
-  new2 = optHere2$par[51], val2 = optHere2$value))
-}
-```
+tilde W = Pt W, W = P tilde W
 
 
-impolrtant sampling weighted mle
-```{r isFitFunctions}
-importanceSampleSkewT = function(Nsamps, mode, df, theta, densFunAll, skewScale = 1,  threshold = 0.999, 
-                                 dataForADFun, parametersForADFun) {
-
-if(missing(densFunAll)) {
-  cat("making ad fun")
-  densFunAll = TMB::MakeADFun(
-  data = dataForADFun, 
-  parameters = parametersForADFun,
-  hessian=TRUE, silent=TRUE,
-  DLL='BayesGP')
-  cat("... done\n")
-
-}
-
-    
-
-hessian = densFunAll$he(c(mode, theta))
-hessian = hessian[1:length(mode), 1:length(mode)]
-hessian = as.matrix(Matrix::nearPD(hessian)$mat)
-theEigen = eigen(hessian)
-sigma1 = (theEigen$vectors) %*% diag(1/theEigen$values) %*% t(theEigen$vectors)  
-sigma2 = ((df-2)/df)*sigma1
-sigma2 = (sigma2 + t(sigma2))/2
-
-oneHess = function(x, ind, mode, theta){
-  theArgs = mode 
-  theArgs[ind] = x
-  densFunAll$he(c(theArgs, theta))[ind,ind]
-}
-
-thirdDeriv = mapply(oneHess, 
-  x = mode, ind = 1:length(mode),
-  MoreArgs = list(mode = mode, theta = theta)
-)
-
-skew = thirdDeriv * skewScale
-
-samples_T1 = sn::rmst(
-  Nsamps, xi = mode, 
-  Omega = sigma2, 
-  alpha =skew,
-  nu=df)
-
-densProp = sn::dmst(
-  samples_T1,xi = mode, 
-  Omega = sigma2, alpha =skew,
-  nu=df,
-  log=TRUE)
-
-densData = -apply(cbind(samples_T1, theta), 1, densFunAll$fn)
-
-
-theProb = densData - densProp
-theProb = theProb - max(theProb)
-theProb = exp(theProb)
-theProb = theProb/sum(theProb)
+```{r remaximizeFunctions, include=FALSE}
 
 
 
-theOrder = order(theProb, decreasing=TRUE)
-toKeep = min(which(cumsum(theProb[theOrder]) > 0.995))
-toKeep = which(theOrder < toKeep)
+eigenForMarginalDens = function(res, dens, Dconfig) {
 
-sampsSub = samples_T1[toKeep, ]
-
-# weights in msn.mle should sum to number of samples
-theW = theProb[toKeep]
-theW = length(theW) * theW / sum(theW)
-
-moment1=apply(samples_T1 *theProb, 2, sum)
-
-
-theSnFit = sn::msn.mle(
-  x = matrix(1,nrow(sampsSub), 1),
-  y=sampsSub, 
-  opt.method='BFGS', 
-  w = theW,
-  start = list(
-  beta = moment1,
-  Omega = var(sampsSub),
-  alpha = skew/100
-  ),
-  trace = FALSE,
-  control=list( 
-   parscale = rep(c(1, 1e4), each=length(mode)))
-)
-
-theSnFit$dp$moment1 = moment1
-
-theSnFit$dp
-}
-```
-
-
-```{r isFitTest, eval=FALSE}
-Dconfig = 1
-stuff = importanceSampleSkewT(
-  mode = res$mod$modesandhessians$mode[[Dconfig]],
-  theta = as.list(res$mod$modesandhessians$theta)[[Dconfig]],
-    Nsamps = 2e5,
-   dataForADFun = res$mod$optresults$ff$env$data,
-   parametersForADFun = res$mod$optresults$ff$env$parameters,
-    df = 40, 
-    skewScale = 1,
-   threshold = 0.999
-)
-```
-
-
-```{r isFit, cache=TRUE}
-fitMle = parallel::mcmapply(
-  importanceSampleSkewT,
-  mode = res$mod$modesandhessians$mode,
-  theta = as.list(res$mod$modesandhessians$theta),
-  MoreArgs = list( 
-    Nsamps = 1e5,
-    df = 40, 
-    skewScale = 1,
-   threshold = 0.999,
-   densFunAll=theDens
-  ),
-  mc.cores = 1, 
-  SIMPLIFY=FALSE
-)
-```
-
-```{r plotFitMle, fig.cap = 'Intercept, SN (blue) and N (red)', fig.subcap = 1:length(fitMle), fig.height=4,fig.width=4}
-par(mar= c(2,0,0,0), mgp=c(1,0.5, 0), bty='n')
-Sx = seq(0,10,len=1001)
-Dpar = 51
-
-sqrt2overpi = sqrt(2/pi)
-
-for(Dconfig  in 1:length(fitMle)) {
-
-theScale = sqrt(fitMle[[Dconfig]]$Omega[Dpar,Dpar])
-delta = fitMle[[Dconfig]]$alpha[Dpar] / sqrt(1 + fitMle[[Dconfig]]$alpha[Dpar]^2)
-theMeanSn = fitMle[[Dconfig]]$beta[1,Dpar] + theScale * delta * sqrt2overpi
-
-theY = cbind(
-  n =   dnorm(Sx, 
-    mean=res$mod$modesandhessians$mode[[Dconfig]][Dpar], 
-    sd=sqrt(solve(res$mod$modesandhessians$H[[Dconfig]])[Dpar,Dpar])
-  ),
-  sn = sn::dsn(Sx, 
-    xi = fitMle[[Dconfig]]$beta[1,Dpar],
-    omega = theScale,
-    alpha = fitMle[[Dconfig]]$alpha[Dpar]
+theHessian = dens$he(
+    c(res$mod$modesandhessians$mode[[Dconfig]], res$mod$modesandhessians$theta[Dconfig])
   )
-)
+theHessian = theHessian[-nrow(theHessian), -nrow(theHessian)]
 
-matplot(Sx, theY, xlim = c(1,8),
-  type='l', xlab='',
-  col=c('red','blue'))
+eigenTwo = eigen(theHessian)
+eigenTwo$hessian = theHessian
+eigenTwo$sd = 1/sqrt(eigenTwo$values)
+eigenTwo$modeOrig = res$mod$modesandhessians$mode[[Dconfig]]
+eigenTwo$modeTransformed = crossprod(eigenTwo$vectors, eigenTwo$modeOrig)
+eigenTwo$theta = res$mod$modesandhessians$theta[Dconfig]
 
-
-
-abline(v = res$mod$modesandhessians$mode[[Dconfig]][Dpar], col='red', lwd=3)
-abline(v= fitMle[[Dconfig]]$moment1[Dpar], col='blue', lwd=3, lty=2)
-abline(v=theMeanSn, col='green', lwd=3,lty=3)
-
+eigenTwo
 }
 
+
+approxMarginalDens = function(eigenHessian, dens, delta = seq(-6,6)) {
+
+Seigen = 1:length(eigenHessian$values)
+
+forEigenList = list(delta = sort(setdiff(delta, 0)), eigen = Seigen)
+forEigen = do.call(expand.grid, forEigenList)
+forEigen$mode = eigenHessian$modeTransformed[forEigen$eigen]
+forEigen$sd = eigenHessian$sd[forEigen$eigen]
+forEigen$newpar = forEigen$mode + forEigen$delta * forEigen$sd
+
+allPar = matrix(eigenHessian$modeOrig, nrow = nrow(forEigen), 
+  ncol=length(eigenHessian$modeOrig), byrow=TRUE)
+for(D in unique(forEigen$eigen)) {
+  whichHere= which(forEigen$eigen == D)
+  allPar[whichHere, D] = forEigen[whichHere, 'newpar']
+}
+
+allParOrig = t(tcrossprod(eigenHessian$vectors, allPar))
+
+
+
+forOrthog = mapply(theDens$fn, 
+  x = as.list(as.data.frame(t(cbind(allParOrig, res$mod$modesandhessians$theta[Dconfig]))))
+)
+
+
+forOrthog2 = -array(unlist(forOrthog), unlist(lapply(forEigenList, length)),
+  dimnames = forEigenList)
+
+theMaxL = -theDens$fn(
+  c(res$mod$modesandhessians$mode[[Dconfig]], res$mod$modesandhessians$theta[Dconfig])
+)
+
+forOrthog3 = rbind(forOrthog2, '0' = theMaxL)
+forOrthog3 = forOrthog3[order(as.numeric(rownames(forOrthog3))), ]
+
+
+forOrthog4 = forOrthog3 - max(forOrthog3)
+
+Sdelta = sort(c(forEigenList$delta,0))
+diffDelta = diff(Sdelta)/2
+diffDelta = c(0, diffDelta) + c(diffDelta, 0)
+toCorrect = log(apply(exp(forOrthog4)*diffDelta, 2, sum))
+forOrthog5 = forOrthog4 - 
+  matrix(toCorrect, nrow(forOrthog4), ncol(forOrthog4), byrow=TRUE)
+
+meanDelta = apply(exp(forOrthog5)*(Sdelta*diffDelta), 2, sum)
+meanTransformed = meanDelta * eigenHessian$sd + eigenHessian$modeTransformed
+meanOrig = eigenHessian$vectors %*% meanTransformed
+
+list(delta = sort(c(forEigenList$delta, 0)), logDens = forOrthog4,
+  mean = cbind(transformed = drop(meanTransformed), orig = drop(meanOrig)))
+}
+
+
+optMinusI = function(x, xi, whichIsI, theta, densFun, deriv=0, eigenvect) {
+  par = rep(0, length(x) + length(xi))
+  par[-whichIsI] = x
+  par[whichIsI] = xi
+  par = eigenvect %*% par
+  result = densFun[[c('fn', 'gr','he')[deriv+1] ]](c(par, theta))
+  if(deriv ==1) {
+    result = result[-length(result)]
+    result = crossprod(eigenvect, result)
+    result = result[-whichIsI]
+  }
+  if(deriv == 2) {
+    result = result[-nrow(result), -ncol(result)]
+
+    result = crossprod(eigenvect, result) %*% eigenvect
+    result = result[-whichIsI, -whichIsI]
+
+  }
+  result
+}
+
+optMinusIgr = function(..., deriv=1) {
+  optMinusI(..., deriv=1)
+}
+
+
+
+reOptimize = function(Deigen, delta, eigenHessian, densFun, 
+  #approxAtMode,
+    fast = TRUE,
+    control = list(), method = 'BFGS', out.all=FALSE) {
+
+  xi = eigenHessian$modeTransformed[Deigen] + delta * eigenHessian$sd[Deigen]
+
+  forStart = eigenHessian$modeTransformed[-Deigen] # x[-i]
+  # need x^*[-1]
+
+  if(fast) {
+    optHere = list(par = forStart)
+    optHere$value = optMinusI(x=optHere$par, xi, whichIsI = Deigen, theta=eigenHessian$theta, 
+      densFun, 
+      deriv=0, eigenvect = eigenHessian$vectors)
+  } else { # fast=FALSE, re-optimize to get new x^*[-i](x_i,theta)
+    forParscale = pmax(1,abs(forStart))
+
+    control$parscale = forParscale
+
+    optHere = optim(
+      par=forStart,
+      fn=optMinusI, 
+      gr = optMinusIgr,
+      xi = xi, whichIsI = Deigen,
+      theta = eigenHessian$theta, densFun = densFun,
+      eigenvect = eigenHessian$vectors,
+      control=control, method=method
+    )
+  }
+
+  theH = optMinusI(x=optHere$par, xi, whichIsI=Deigen, theta=eigenHessian$theta, densFun, 
+    deriv=2, eigenvect=eigenHessian$vectors)
+
+  # cbind(optHere$par, forStart)
+#  optHere$densMinusI = sum(unlist(
+#    mapply(approx, 
+#      y = as.data.frame(approxAtMode$logDens[,-Deigen]),
+#      xout = (optHere$par - eigenHessian$modeTransformed[-Deigen])/
+#            eigenHessian$sd[-Deigen],
+#      MoreArgs = list(x = approxAtMode$delta, rule=2)
+#  )['y',]))
+
+  if(fast) {
+    optHere$detH = sum(log(diag(theH)))
+  } else {
+    optHere$detH = determinant(theH, log=TRUE)$modulus    
+  }
+
+  if(out.all) {
+    return(optHere)
+  } else {
+    return(unlist(optHere[c('value', 'detH')]) )
+  }
+}
+
+
+reOptMargDens = function(eigenHessian, dens,  
+  indexEigen = length(eigenHessian$values):1, delta = c(1,2,4),
+  out.all=FALSE, fast = FALSE, control=list(), method='BFGS') {
+
+  delta = sort(unique(setdiff(as.vector(outer(delta, c(-1,1))), 0)))
+
+  eigenDelta = expand.grid(
+    delta = delta, 
+    Deigen = indexEigen)
+
+  reOptRes = mapply(
+    reOptimize,
+    Deigen = eigenDelta$Deigen,
+    delta = eigenDelta$delta,
+    MoreArgs = list(
+      eigenHessian = eigenHessian,
+      densFun = dens,
+#      approxAtMode = approxAtMode,
+      control = control, method = method,
+      fast = fast
+    ), 
+    SIMPLIFY=TRUE  
+  )
+  eigenDelta = cbind(eigenDelta, as.data.frame(t(reOptRes)))
+
+  theDeigenZero = expand.grid(
+    delta = 0,
+    Deigen = unique(eigenDelta$Deigen),
+    value = dens$fn(c(eigenHessian$modeOrig, eigenHessian$theta)),  
+    densMinusI = NA,
+    detH = NA
+  )
+
+  theDeigenZero$detH = theDeigenZero$detHapprox = sum(log(eigenHessian$values)) - log(eigenHessian$values)[theDeigenZero$Deigen]
+
+
+
+  eigenDeltaFull = rbind(eigenDelta, theDeigenZero[,colnames(eigenDelta)])
+
+  eigenDeltaFull$logDens = -eigenDeltaFull$value - eigenDeltaFull$detH/2
+
+
+#plot(eigenDeltaFull[eigenDeltaFull$Deigen == 1,c('delta','logDens')])   
+
+  eigenDeltaFull$logDens = eigenDeltaFull$logDens - max(eigenDeltaFull$logDens)
+
+  eigenDeltaFull$xi = eigenHessian$modeTransformed[eigenDeltaFull$Deigen] + 
+  eigenDeltaFull$delta * eigenHessian$sd[eigenDeltaFull$Deigen]
+
+
+
+
+  SdeltaFine = seq(-6,6, len=4001)
+  theNewMean = tapply(eigenDeltaFull, eigenDeltaFull$Deigen,
+    function(xx) {
+      theInterp = splinefun(xx$xi, xx$logDens)
+      theMode = xx[xx$delta == 0, 'xi']
+      theStep = unlist(xx[which(xx$delta !=0)[1],c('delta','xi')])
+      theStep = (theStep['xi'] - theMode)/theStep['delta']
+      Sxi = SdeltaFine*theStep + theMode
+      binsize = c(0,diff(Sxi)/2, 0)
+      binsize = binsize[-1] +binsize[-length(binsize)]
+
+      Sy = exp(theInterp(Sxi))
+      Sy = Sy/sum(Sy * binsize)
+      sum((Sy * Sxi)*binsize)
+    })
+
+
+  result = list(mean=cbind(
+    meanTransformed = theNewMean,
+    meanOrig = drop(eigenHessian$vectors[,indexEigen, drop=FALSE] %*% theNewMean)
+  ))
+  result$hessian = theDens$he(c(result$mean[,'meanOrig'], eigenHessian$theta))[
+    1:nrow(result$mean), 1:nrow(result$mean)
+  ]
+  result$gr = theDens$gr(c(result$mean[,'meanOrig'], eigenHessian$theta))[1:nrow(result$mean)]
+
+  result$var = solve(result$hessian)
+  result$theta = eigenHessian$theta
+
+  if(out.all) {
+    result$detail=eigenDeltaFull
+  }
+  return(result)
+}
+```
+
+
+```{r remaximize}
+Dconfig = 3
+
+eigenHessian = eigenForMarginalDens(res, theDens, Dconfig)
+newMeanAll = reOptMargDens(eigenHessian, dens=theDens, 
+  delta = c(1, 2, 3, 4, 6), fast=FALSE,
+  method= 'BFGS', control = list(maxit=1e3, reltol=1e-5), out.all=TRUE)
+newMeanAllFast = reOptMargDens(eigenHessian, theDens, 
+  delta = c(1, 2,  4), fast=TRUE,
+  method= 'BFGS', control = list(maxit=1e3, reltol=1e-5), out.all=TRUE)
+newMean = newMeanAll$mean
+newMeanFast = newMeanAllFast$mean
+
+newMeanAll$gr %*% solve(newMeanAll$hessian, newMeanAll$gr)
+
+#naive method, just for comparisonn
+approxAtMode = approxMarginalDens(eigenHessian, dens) # gaussian approx at mode
+
+#plot(newMeanAll$detail[newMeanAll$detail$Deigen == 1,c('delta','logDens')]) 
 ```
 
 
@@ -278,7 +367,20 @@ abline(v=theMeanSn, col='green', lwd=3,lty=3)
 
 
 
-```{r customCpp, cache=TRUE}
+```{r fitInla}
+fitInla = fitInla1 = INLA::inla(
+  Yresp ~ week2 + treatment+ f(ID, initial=eigenHessian$theta, fixed=TRUE),
+  data = bacteria, 
+  control.fixed = list(mean = 0, prec = 0.001),
+  control.inla= list(strategy='gaussian', linear.correction=FALSE, adjust.weights=FALSE),
+  control.compute = list(return.marginals=TRUE, config=TRUE),
+  family='binomial', verbose=TRUE)
+
+```
+
+
+
+```{r customCppForMcmc, cache=FALSE, include=FALSE}
 theCpp =list.files(system.file("extsrc", package="BayesGP"), full.names=TRUE)
 theCpp = scan(theCpp, what='a', sep='\n')
 
@@ -291,8 +393,6 @@ theCppFileSansExt = gsub("[.]cpp$", "", theCppFile)
 theCpp = gsub("R_init_BayesGP", 
   paste0("R_init_", basename(theCppFileSansExt)),
   theCpp)
-
-
 write(theCpp, theCppFile)
 TMB::compile(theCppFile)
 ```
@@ -300,22 +400,20 @@ TMB::compile(theCppFile)
 
 MCMC with fixed theta
 
-```{r theAdFun}
+```{r theMcmc, cache=TRUE}
 theDll <- dyn.load(TMB::dynlib(theCppFileSansExt))
-
-Dconfig = 4
 ffFixedTheta <- TMB::MakeADFun(
       data = c(theDens$env$data, 
-        list(theta = res$mod$modesandhessians$theta[Dconfig])),
+        list(offset_sum = 0, theta = res$mod$modesandhessians$theta[Dconfig])),
       parameters = list(W=rep(1,length(theDens$env$parameters$W))),
       DLL = theDll[[1]],
       silent=TRUE
 )
 
-default_option_list <- BayesGP::get_default_option_list_MCMC(
+default_option_list <- BayesGP:::get_default_option_list_MCMC(
   list(chains=4, cores=4, warmup=1000))
 
-Nsamples = 2000
+Nsamples = 100000
 
 options(mc.cores = parallel::detectCores())
 rstan::rstan_options(auto_write = TRUE)
@@ -327,66 +425,883 @@ mod <- tmbstan::tmbstan(
         iter = default_option_list$warmup + Nsamples,
         warmup = default_option_list$warmup,
         seed = default_option_list$seed,
-        silent = default_option_list$silent,
-        laplace = default_option_list$laplace
-)
+        laplace = FALSE,
+        thin = 10, silent=TRUE)
 
 allSamples = rstan::extract(mod)[[1]]
 ```
 
+```{r mcmcPlot, include=FALSE}
+plot(allSamples[,c(51, 53)], cex=0.3, col='#00000030', xlim = c(2,6), ylim = c(-3,1))  
+points(
+  res$mod$modesandhessians$mode[[Dconfig]][51], 
+  res$mod$modesandhessians$mode[[Dconfig]][53], 
+  col='red', pch=16)
+```
 
 
-```{r allHIst, fig.height=4, fig.width=4, fig.cap='mcmc (hist), normal (red), sn (blue)', fig.subcap = 1:length(res$mod$modesandhessians$mode[[1]])}
-par(mar = c(1.5, 0, 0,0), bty='n', mgp=c(0.5, 0.2, 0))
-for(D in 1:ncol(allSamples)) {
-  hist(allSamples[,D], prob=TRUE, breaks = 30, main='', 
-    border=0,
-    xlim = quantile(allSamples[,D], c(0.001, 0.999)), xlab='', ylab='', yaxt='n')
-  Sx = seq(par('usr')[1], par('usr')[2], len=1000)
-lines(Sx, 
-  dnorm(Sx, 
-    mean=res$mod$modesandhessians$mode[[Dconfig]][D], 
-    sd=sqrt(solve(res$mod$modesandhessians$H[[Dconfig]])[D,D])
-  ),
-  col='red')
-lines(Sx, 
-  sn::dsn(Sx, 
-    xi = fitMle[[Dconfig]]$beta[1,D],
-    omega = sqrt(fitMle[[Dconfig]]$Omega[D,D]),
-    alpha = fitMle[[Dconfig]]$alpha[D]
-  ), 
-  col='blue')
 
-abline(v=fitMle[[Dconfig]]$moment1[D], col='green', lwd=3)
-abline(v=mean(allSamples[,D]), col='black')
+Defining the unnormalized posterior and derivatives
+```{r}
+m <- 53
+y = bacteria$Yresp
+myModel <- cbind(model.matrix(Yresp~ 0+factor(ID), data=bacteria),
+  model.matrix(Yresp ~ 1 + week2 + treatment ,data =bacteria)
+)
 
-theScale = sqrt(fitMle[[Dconfig]]$Omega[D,D])
-delta = fitMle[[Dconfig]]$alpha[D] / sqrt(1 + fitMle[[Dconfig]]$alpha[D]^2)
-theMeanSn = fitMle[[Dconfig]]$beta[1,D] + theScale * delta * sqrt2overpi
+```
 
-abline(v=theMeanSn, col='blue')
 
+```{r}
+logpost <- function(W){
+  Sigma <- diag(c(rep((exp(res$mod$modesandhessians$theta[Dconfig])^(-1)), 50), rep((10)^3, 3)))
+  k_values <- rep(1,220)
+  constant <-  log(prod(choose(k_values, bacteria$Yresp)))
+ 
+  return(sum(rowSums(myModel%*%W)%*% y) + constant -
+           sum(log(1+exp(rowSums(myModel %*%W)))%*% k_values) - 
+           (m/2)*log(2*pi) - log(sqrt(det(Sigma))) - 
+           (1/2)*(t(W)%*%solve(Sigma)%*% W))
+         
+        
 }
+
+## first deriv
+F1_post <- function(W){ 
+  Sigma <- diag(c(rep((exp(res$mod$modesandhessians$theta[Dconfig])^(-1)), 50), rep((10)^3, 3)))
+  k_values <- rep(1,220)
+  return(t(myModel) %*% y - t(myModel) %*% 
+           ( diag(k_values) %*% (exp( rowSums(myModel %*% W)))/ 
+               (1+ exp( rowSums(myModel %*% W)))) - solve(Sigma)%*% W)
+}
+
+### second derivative of log-unnormalized posterior
+F2_post <- function(W) {
+  Sigma <- diag(c(rep((exp(res$mod$modesandhessians$theta[Dconfig])^(-1)), 50), rep((10)^3, 3)))
+  k_values <- rep(1,220)
+  diag_elmt_1 <- diag(k_values)
+  term_1 <- exp(rowSums(myModel %*% W))
+  term_2 <- (1 + exp( rowSums(myModel %*% W)))^2
+  final_trm <- term_1 / term_2
+  diag_elmt_3 <- diag(final_trm)
+  diagonal_elmt <- diag_elmt_3 %*% diag_elmt_1
+  return(- (t(myModel) %*% diagonal_elmt %*% myModel) - solve(Sigma))
+  
+}
+
+
 ```
 
 
 
-```{r fromPriyanka, eval=FALSE}
-thetaHere = -3.373762
-exp(thetaHere)^(-1/2)
-optHere = optim(res$mod$modesandhessians$mode[[Dconfig]],
-  theDens2, gr = theGr2, theta = thetaHere, method="BFGS")
 
-optHere$par
+To solve for c
 
-hessianHere <- numDeriv::jacobian(theGr2, optHere$par, theta = thetaHere)
+```{r}
+# x <- function(c){
+#   sqrt(2/(pi *c)) *(c-1)
+# }
+zeta1 <- function(c){
+  return(sn::zeta(1,sqrt(2/(pi *c)) *(c-1)))
+}
 
-isHere = forImportanceSampling(10000, mode=optHere$par, 
-  hessian = hessianHere, df=20, theta=thetaHere, densFun=theDens$fn) 
+zeta2 <- function(c){
+  return(sn::zeta(2,sqrt(2/(pi *c)) *(c-1)))
+}
 
-isHere[51,]
 
-interceptMode = 4.2525603
+
+
+k1 <- function(c){
+  return(sqrt(2/(pi*c))/ k3(c))
+}
 
 ```
+
+
+
+
+
+
+```{r}
+# Define the equation  to solve for c
+
+equation <- function(c, hTilde) {
+
+
+  return( c - cFromC(c, hTilde))
+ # c- 1- hTilde*k3(c)^(-2)*((hTilde/(k2(c)^(-1) - hTilde))-1)
+}
+
+##USING NR-METHOD TO FIND THE ROOT
+
+# Derivative of the equation with respect to c (needed for Newton-Raphson
+#method)
+eqn_derivative <- function(c, hTilde) {
+  h <- 1e-6
+  return( (equation(c+ h, hTilde) - equation(c, hTilde)) / h)### derivative
+  #with finite differnces
+}
+
+# Newton-Raphson method for finding the root of the equation
+NRforc <- function( c0, hTilde, tol = 1e-6, max_iter = 1000) {
+  c <- c0
+  iter <- 1
+
+  while (iter <= max_iter) {
+    c_new <- c - equation(c, hTilde) / eqn_derivative(c, hTilde)
+
+    # Check for convergence
+    if (abs(c_new - c) < tol) {
+      cat("Root found at:", c_new, "\n")
+      cat("Number of iterations:", iter, "\n")
+      return(c_new)
+    }
+
+    c <- c_new
+    iter <- iter + 1
+  }
+
+  cat("Root not found within maximum iterations.\n")
+  return(NULL)
+}
+# Initial guess for c
+
+
+```
+
+
+
+# skew normal stuff
+
+on hold
+
+
+```{r remaxThirdDeriv, include=FALSE}
+
+grMean = crossprod(eigenHessian$vectors,
+  theDens$gr(c(newMean[,'meanOrig'], eigenHessian$theta))[1:nrow(newMean)]
+)
+heMean = crossprod(eigenHessian$vectors,
+  theDens$he(c(newMean[,'meanOrig'], eigenHessian$theta))[1:nrow(newMean),1:nrow(newMean)]
+) %*% eigenHessian$vectors
+
+forThree = mapply(function(Deigen, delta, x, dens, vectors, theta) {
+    x[Deigen] = x[Deigen] + delta
+    (
+      crossprod(vectors,
+      dens$he(c(x, theta))[
+      1:nrow(newMean),1:nrow(newMean)]) %*% 
+      vectors
+    )[Deigen,Deigen]
+  },
+  Deigen = 1:nrow(newMean),
+  delta = 0.1*eigenHessian$sd,
+  MoreArgs = list(x = newMean[,'meanOrig'], dens = theDens, 
+    theta = eigenHessian$theta,
+    vectors = eigenHessian$vectors)
+)
+thirdMean = (forThree - diag(heMean)) /  0.1*eigenHessian$sd
+plot(grMean[-1], ( sign(thirdMean) * abs(thirdMean)^(1/3))[-1])
+```
+
+
+
+
+```{r computegrHe}
+### posterior mean
+mu_tilde <- newMeanAll$mean[,'meanOrig']
+## first derivative at mean
+grAtMean <-  -newMeanAll$gr
+hessianAtMean= -newMeanAll$hessian
+
+grAtMcmcMean = -drop(theDens$gr(c(apply(allSamples, 2, mean),  newMeanAll$theta)))[1:ncol(allSamples)]
+hessianAtMcmcMean = -drop(theDens$he(c(apply(allSamples, 2, mean),  newMeanAll$theta)))[1:ncol(allSamples),1:ncol(allSamples)]
+
+theEigenMean = eigen(hessianAtMean)
+theEigenMcmcMean = eigen(hessianAtMcmcMean)
+
+grAtMeanTilde = crossprod(theEigenMean$vectors, grAtMean)
+grAtMcmcMeanTilde = crossprod(theEigenMcmcMean$vectors, grAtMcmcMean)
+
+(toSum = drop(grAtMeanTilde^2/theEigenMean$values))
+(toSumMcmc = drop(grAtMcmcMeanTilde^2/theEigenMcmcMean$values))
+
+modeMcmcTilde = crossprod(theEigenMcmcMean$vectors, res$mod$modesandhessians$mode[[Dconfig]])
+
+meanOrthogAtMean = crossprod(theEigenMean$vectors, newMeanAll$mean[,'meanOrig'])
+
+sampOdd=t(drop(
+  (t(theEigenMean$vectors) %*% t(allSamples))[c(20, 28, 32, 53),]))
+plot(sampOdd[,1:2], cex=0.2, col='#00000010')
+
+par(mfrow = c(2,2), mar = c(2,2, 0,0))
+for(D in 1:4) {
+  hist(sampOdd[,D], breaks=50, prob=TRUE);abline(v=mean(sampOdd[,D]), col='red')
+  abline(v=modeMcmcTilde[c(20,28,32,53)[D]], col='blue')
+}
+
+fitSn36 = sn::selm.fit(x=matrix(1, nrow=nrow(sampOdd), ncol=1), y = sampOdd[,2], family = "SN")$param$dp
+lines(xSeq, sn::dsn(xSeq, xi = fitSn36['xi'], omega = fitSn36['omega'],
+  alpha = fitSn36['alpha']), col='blue', lwd=3)
+
+grAtMeanTilde[53]
+
+theDens$he(c(apply(allSamples )))
+
+numDeriv::grad(sn::dsn, x=meanOrthogAtMean[36], xi = fitSn36['xi'], omega = fitSn36['omega'],
+  alpha = fitSn36['alpha'],log=TRUE)
+numDeriv::hessian(sn::dsn, x=meanOrthogAtMean[36], xi = fitSn36['xi'], omega = fitSn36['omega'],
+  alpha = fitSn36['alpha'], log=TRUE)
+grAtMeanTilde[36]^2/theEigenMean$values[36]
+```
+
+
+
+
+
+```{r skewparameters}
+
+
+k3 <- function(c){
+  c2 =  (c-1) * sqrt(2/(pi*c))
+  return( sn::zeta(1,c2) - sqrt(2/(pi*c)))
+}
+
+k2 <- function(c){
+    c2 =  (c-1) * sqrt(2/(pi*c))
+    sn::zeta(2,c2) / ( ( sn::zeta(1,c2) - sqrt(2/(pi * c)))^2)
+}
+
+
+
+  cFromC = function(CC, hTilde) {
+      sqrt2overpi = 0.7978845608028653558798921198687637369517172623298693153318516593
+      sqrtTwoOverPiC = sqrt2overpi * 1/sqrt(CC)
+      C2 = sqrtTwoOverPiC * (CC-1)
+      K3Sq = (sn::zeta(1, C2)-sqrtTwoOverPiC )^2
+      K2 = sn::zeta(2, C2) / K3Sq
+
+
+      1 + hTilde/ (K3Sq * (1-K2*hTilde))
+
+  }
+
+
+
+
+
+cSeq = seq(1, 50, len=10000)
+cSeqFromC = cFromC(cSeq, hTilde=hTilde)
+plot(cSeq, cSeqFromC, type='l', ylim = c(0,10), xaxs='i')
+abline(0,1,col='red')
+
+theDiff = cSeqFromC - cSeq
+diffValues =diff(cSeqFromC - cSeq)
+diffSign =diff(sign(cFromC(cSeq, hTilde=hTilde) - cSeq))
+theChange = which(diffSign != 0)
+
+cSeq2 = cSeq[sort(as.vector(outer(theChange, c(-2, -1, 0,1,2), FUN = '+')))]
+root_cIndex = which.min(abs(cFromC(cSeq2, hTilde) - cSeq2))
+
+cSeq3 = seq(cSeq2[root_cIndex-1], cSeq2[root_cIndex+1], len=1001)
+plot(cSeq3, cFromC(cSeq3, hTilde), type='l')#, ylim = c(-100, 1000))
+abline(0,1,col='red')
+
+root_c = approx(cFromC(cSeq3, hTilde)-cSeq3, cSeq3, 0)$y
+abline(v=root_c, col='blue', lty=3)
+
+#c0 <- 0
+# Call Newton-Raphson method
+#root_c <- NRforc(c0, hTilde)
+
+
+
+root_c = 1
+minusHessianAtMean = diag(53)
+grAtMean = rep(0, nrow(minusHessianAtMean))
+minusHessianAtMeanInv = solve(minusHessianAtMean)
+hTilde <- -as.vector(crossprod(grAtMean, minusHessianAtMeanInv %*% grAtMean))
+
+
+sqrtTwoOverPiCi = sqrt(2/(root_c * pi))
+C2 = drop(sqrtTwoOverPiCi * (root_c-1))
+
+K3 = sqrtTwoOverPiCi +  sn::zeta(1, C2)
+K2 = sn::zeta(2, C2) / K3^2
+K4 = K2/(1-K2*hTilde)
+
+
+OmegaInv = minusHessianAtMean + K2 * outer(grAtMean, grAtMean)
+Omega = minusHessianAtMeanInv - K4 * tcrossprod(minusHessianAtMeanInv %*% grAtMean) 
+
+quantile(Omega %*% OmegaInv - diag(ncol(Omega)))
+
+
+1 + (1/K3^2) * grAtMean %*% (minusHessianAtMeanInv - K4 * minusHessianAtMeanInv %*% outer(grAtMean, grAtMean) %*% minusHessianAtMeanInv) %*% grAtMean
+
+1 -  hTilde / (K3^2 * (1-K2*hTilde))
+
+CC = seq(1, 100, len=1001)
+sqrtTwoOverPiCi = sqrt(2/(CC * pi))
+C2 = drop(sqrtTwoOverPiCi * (CC-1))
+
+K3 = sqrtTwoOverPiCi +  sn::zeta(1, C2)
+K2 = sn::zeta(2, C2) / K3^2
+K4 = K2/(1-K2*hTilde)
+
+CCnew = 1 -  hTilde / (K3^2 * (1-K2*hTilde))
+
+plot(CC, CCnew, type='l', ylim = c(-100,1000))
+(CCnew-CC)[1:10]
+
+
+d_get = grAtMean / K3
+
+hessianReconstruct = solve(Omega) - sn::zeta(2, C2)  * outer(d_get, d_get)
+
+quantile(as.vector(hessianReconstruct - minusHessianAtMean))
+
+
+root_c
+cFromC(root_c, hTilde)
+1 + d_get %*% Omega %*% d_get
+
+
+
+
+d_get = grAtMean / (zetaOneC2 - sqrtTwoOverPiCi)
+Omget_get2 = solve(-HessianAtMean + (1/K2) * outer(grAtMean, grAtMean))
+alpha_get =  d_get*sqrt(diag(Omega_get))
+xi_get = mu_tilde - sqrtTwoOverPiCi * Omega_get %*% d_get
+
+root_c
+cFromC(root_c, hTilde)
+1 + d_get %*% Omega_get %*% d_get
+
+#xi_get <- mu_tilde - as.vector(k1(root_c))* (1 - as.vector(t3))*(hessianAtMeanInv%*%grAtMean)
+
+
+
+theoHessian = -solve(Omega_get) +  zetaTwoC2  * outer(alpha_get, alpha_get)
+theoHessian[50:52, 50:52]
+HessianAtMean[50:52, 50:52]
+theoHessian = -solve(Omega_get) +  zetaTwoC2  * outer(d_get, d_get)
+theoHessian[50:52, 50:52]
+
+
+
+omega_get <- sqrt(matrixcalc::hadamard.prod(Omega_get,diag(53)))
+#alpha_get <- sqrt(matrixcalc::hadamard.prod(Omega_get,diag(53)))%*% d_get
+#Omega_get <- nearPD(Omega_get)
+# Omega_get_n <- Omega_get$mat
+# matrixcalc::is.positive.definite(as.matrix(Omega_get_n))
+
+# check mean
+sample_new <- sn::rmsn(100000, xi = as.vector(xi_get), Omega = Omega_get, alpha= as.vector(alpha_get))
+
+DeltaForMean = (Omega_get %*% alpha_get) / drop(sqrt(1 + t(alpha_get) %*% Omega_get %*% alpha_get))
+
+
+D = 51
+
+hist(allSamples[,D], prob =TRUE, breaks=100)
+lines(density(sample_new[,D]), col='red')
+Sx = seq(par('usr')[1], par('usr')[2], len=1001)
+
+
+meanSn = drop(xi_get + sqrt(2/(pi * root_c))* Omega_get %*% alpha_get)
+
+meanSn[D]
+newMeanAll$mean[D,'meanOrig']
+mean(allSamples[,D])
+
+Sdens = sn::dmsn(rbind(meanSn - 0.00001 * ( (1:length(meanSn)) == D), meanSn, meanSn + 0.00001 * ( (1:length(meanSn)) == D)), 
+  xi = as.vector(xi_get), Omega = Omega_get, alpha= as.vector(alpha_get), log=TRUE)
+
+diff(Sdens)/0.00001
+diff(Sdens2)/0.00001
+grAtMean[D]
+
+diff(diff(Sdens))/(0.00001^2)
+
+
+newX = rbind(newMeanAll$mean[,'meanOrig'] - 0.01 * ( (1:length(meanSn)) == D), newMeanAll$mean[,'meanOrig'], newMeanAll$mean[,'meanOrig'] + 0.01 * ( (1:length(meanSn)) == D))
+Sdens2 = sn::dmsn(newX, 
+  xi = as.vector(xi_get), Omega = Omega_get, alpha= as.vector(alpha_get), log=TRUE)
+SdensTrue = apply(cbind(newX, newMeanAll$theta), 1, theDens$fn)
+
+
+
+
+HessianAtMean[D,D]
+theoHessian[D,D]
+diff(diff(Sdens2))/(0.01^2)
+-diff(diff(SdensTrue))/(0.01^2)
+
+newL = cbind(Sdens2-Sdens2[2], -(SdensTrue-SdensTrue[2]))*1e5
+
+diff(newL[,1])
+diff(diff(newL[,1]))
+
+diff(newL[,2])
+diff(diff(newL[,2]))
+
+
+sd(sample_new[,D])
+sd(allSamples[,D])
+
+
+DeltaForSn = (Omega_get %*% alpha_get) / sqrt(root_c)
+sqrt(Omega_get[D,D] - (2/pi) * DeltaForSn[D]^2)
+
+N = 50
+fitBoth = cbind(fitSn26, fitSn36)
+Omega =  diag(N)# + 0.2*matrix(1, N, N)
+xi = rep(0,N)
+alpha = rep(10, N)
+delta = drop(Omega %*% alpha / sqrt(1+drop(alpha %*% Omega %*% alpha)))
+mu = xi + sqrt(2/pi) * delta
+
+nu = Inf
+
+theGrad = numDeriv::grad(sn::dmst, x=mu, xi = xi, Omega = Omega, alpha = alpha, nu=nu,log=TRUE)
+theHessian = numDeriv::hessian(sn::dmst, x=mu, xi = xi, Omega = Omega, alpha = alpha, nu=nu,log=TRUE)
+theHessianInv = solve(theHessian)
+
+(hTilde = drop(theGrad %*%  theHessianInv %*% theGrad))
+
+  theEigen = eigen(theHessian)
+  grTilde = crossprod(theEigen$vectors, theGrad)
+
+  (xx = drop(grTilde^2/theEigen$values))
+  sum(xx)
+
+
+  # drop(mu - apply(sn::rmsn(10000000, xi = xi, Omega = Omega, alpha = alpha), 2, mean))
+
+  (CC = drop(1+ alpha %*% Omega %*% alpha))
+  sqrtTwoOverPiC = sqrt(2/(CC * pi))
+  CC2 =  (CC-1) * sqrtTwoOverPiC
+  K3 = -sqrtTwoOverPiC +  sn::zeta(1, CC2)
+  OmegaInv = solve(Omega)
+
+  (theGrad = K3 * alpha)
+
+  (theHessian = -OmegaInv  + sn::zeta(2, sum(alpha*(mu-xi))) * outer(alpha, alpha))
+  theHessianInv = solve(theHessian)
+
+  (hTilde = drop(theGrad %*%  theHessianInv %*% theGrad))
+
+  CfromCderiv = function(CC, hTilde) {
+    sqrtTwoOverPiC = sqrt(2/(CC * pi))
+    CC2 =  (CC-1) * sqrtTwoOverPiC
+    K3 = -sqrtTwoOverPiC +  sn::zeta(1, CC2)
+    K4 = 1/(K3^2/sn::zeta(2, CC2) - hTilde)
+    drop(1+ (1/K3^2) * (-hTilde -K4*hTilde^2))
+  }
+
+  CCseq = seq(1, 100, len=1001)[-1]
+  plot(CCseq, CfromCderiv(CCseq, hTilde=-1), ylim = 100*c(-1, 1), cex=0.4)
+  abline(0,1,col='red')
+
+
+
+sqrt(2/pi)*sum(alpha * delta)
+(CC-1) * sqrtTwoOverPiC
+
+drop(-OmegaInv %*% (mu - xi)) + sn::zeta(1, sum(alpha*(mu-xi))) * alpha
+drop(-OmegaInv %*% Omega %*% (sqrt(2/pi) * alpha) / sqrt(CC)
+  ) + sn::zeta(1,  sqrt(2/pi)*sum(alpha * delta)) * alpha
+(-sqrtTwoOverPiC + sn::zeta(1,  sqrt(2/pi)*sum(alpha * delta))) * alpha
+(-sqrtTwoOverPiC + sn::zeta(1,  (CC-1) * sqrtTwoOverPiC)) * alpha
+(-sqrtTwoOverPiC + sn::zeta(1, CC2)) * alpha 
+
+
+  
+
+
+
+
+K2 = sn::zeta(2, CC2) / K3^2
+K4 = 1/(K3^2/sn::zeta(2, CC2) - hTilde)
+
+Omega
+- theHessianInv - K4* theHessianInv %*% outer(theGrad, theGrad) %*% theHessianInv
+
+
+
+CC
+drop(1+ (1/K3^2) * theGrad %*% Omega %*% theGrad)
+
+1 - (1/K3^2) * theGrad %*% theHessianInv %*% theGrad - 
+  (1/K3^2) * K4 * theGrad %*%  theHessianInv %*% outer(theGrad, theGrad) %*% theHessianInv %*% theGrad
+
+1 - (1/K3^2) * hTilde -  (1/K3^2) * K4 * hTilde^2
+
+1 - (1/K3^2) * hTilde*(1+K4 * hTilde)
+
+
+
+drop(1+ (1/K3^2) * (-hTilde -K4*hTilde^2))
+
+
+(CCfromDeriv = 1 + (1/K3^2) * (- hTilde - K4*hTilde^2))
+
+```
+
+
+
+
+
+```{r plotCompare, fig.cap = 'compare', fig.subcap = c('orig','transformed','sd', '2d', 'dens', '2d orig'), out.width='45%', echo=FALSE}
+meanMcmc = apply(allSamples, 2, mean)
+Scol = c(new='yellow',fast='grey',mode='green',indep='blue',inla='red')
+
+matToPlotOrig = cbind(
+  newMean[,'meanOrig'],
+  newMeanFast[,'meanOrig'],
+  eigenHessian$modeOrig,
+  approxAtMode$mean[,'orig'],
+  fitInla1$misc$configs$config[[1]]$improved.mean)
+matToPlotTrans =   cbind(
+  newMean[,'meanTransformed'],
+  newMeanFast[,'meanTransformed'],
+  eigenHessian$modeTransformed,
+  approxAtMode$mean[,'transformed'],
+  crossprod(eigenHessian$vectors, fitInla1$misc$configs$config[[1]]$improved.mean)
+  )
+
+matplot(meanMcmc, matToPlotOrig,
+   col=Scol,
+   pch=16, cex=seq(2,1,len=length(Scol)))
+abline(0,1, col='yellow')
+legend('topleft', pch=16, col=Scol, 
+  legend = names(Scol),
+  bty='n')
+
+matplot(crossprod(eigenHessian$vectors, meanMcmc), 
+  matToPlotTrans,
+   col=Scol,
+   pch=16, cex=seq(2,1,len=length(Scol)))
+abline(0,1, col='black')
+legend('topleft', pch=16, col=Scol, 
+  legend = names(Scol),
+  bty='n')
+
+matplot(
+  eigenHessian$sd, 
+  (drop(crossprod(eigenHessian$vectors, meanMcmc)) - matToPlotTrans),
+   col=Scol,
+   pch=16, cex=seq(4,1,len=length(Scol)))
+abline(h=0, col='yellow')
+legend('topleft', pch=16, col=Scol, 
+  legend = names(Scol),
+  bty='n')
+
+Seigen = 1:length(eigenHessian$sd)
+
+Splot = c(26,27)
+plotHere = t(crossprod(eigenHessian$vectors, t(allSamples)))[,Splot]
+plot(plotHere, col='#00000020', cex=0.5)
+points(t(matToPlotTrans[Splot,]), col=Scol, cex=seq(2,1,len=4), pch=16)
+points(matrix(apply(plotHere, 2, mean),nrow=1), col='orange', pch=16)
+legend('topleft', pch=16, col=Scol, 
+  legend = names(Scol),
+  bty='n')
+
+stuff = newMeanAll$detail[newMeanAll$detail$Deigen == Splot[1],]
+stuff = stuff[order(stuff$delta),]
+plot(stuff$xi, exp(stuff$logDens), type='o')
+abline(v=matToPlotTrans[Splot[1],], col=Scol, lwd=4:1)
+abline(v=mean(plotHere[,1]), col='orange', lwd=2)
+legend('topleft', pch=16, col=Scol, 
+  legend = names(Scol),
+  bty='n')
+
+Splot = c(51, 52)
+plotHere =  allSamples[,Splot]
+plot(plotHere, col='#00000020', cex=0.5)
+points(t(matToPlotOrig[Splot,]), col=Scol, cex=seq(2,1,len=4), pch=16)
+points(matrix(apply(plotHere, 2, mean),nrow=1), col='orange', pch=16)
+legend('topleft', pch=16, col=Scol, 
+  legend = names(Scol),
+  bty='n')
+
+```
+
+```{r, comparesSnMcmcSim}
+set.seed(2021)
+sample_new <- sn::rmsn(5000, xi = as.vector(xi_get), Omega = Omega_get, alpha= as.vector(alpha_get))
+sample_lap <- MASS::mvrnorm(5000, mu = unlist(res$mod$modesandhessians$mode[Dconfig]), Sigma =  solve(as.matrix(res$mod$modesandhessians$H[[Dconfig]])))
+
+#for( D in 1 : ncol(allSamples)){
+
+D = 51
+
+hist(allSamples[,D], prob =TRUE)
+
+Sx = seq(par('usr')[1], par('usr')[2], len=1001)
+lines(Sx, sn::dsn(Sx, xi = xi_get[D], omega = sqrt(Omega_get[D,D]), alpha = alpha_get[D]), col='blue')
+lines(density(sample_new[,D]), col = "blue")
+lines(density(sample_lap[,D]), col ="red")
+}
+
+# hist(allSamples[,51], prob =TRUE, ylim = c(0,1))
+# lines(Sx,sn::dsn(Sx,xi =xi.star.mm.up_Q_t1[51], omega = sqrt(Omega.star.mm.up_Q1_t[51,51]),
+#               alpha = alpha.mm_Q1_t[51]), col = "red")
+
+
+
+```
+
+
+
+
+
+
+
+
+
+```{r mleSn, eval=FALSE, include=FALSE}
+# theOrder = order(theProb, decreasing=TRUE)
+# toKeep = min(which(cumsum(theProb[theOrder]) > probKeep))
+# toKeep = which(theOrder < toKeep)
+# 
+# 
+# samplesValuesOrig2 = sampleValuesOrig[toKeep,]
+# sampleValues2 = sampleValues[toKeep,]
+# theProb2 = theProb[toKeep]
+# theProb2 = theProb2 / sum(theProb2)
+# 
+# theW = length(theProb2) * theProb2
+# fitUnivList = parallel::mcmapply(
+#   sn::sn.mple,
+#   y = as.list(as.data.frame(sampleValues2)),
+#   MoreArgs = list(
+#   x = matrix(1,nrow(sampleValues2), 1),
+#   w = theW,
+#   opt.method = 'CG', control = list(maxit=2e2, reltol = 1e-8, parscale = c(1,5,10))
+#   ),
+#   SIMPLIFY=FALSE, mc.cores=1
+# )
+# fitUniv = do.call(rbind, lapply(fitUnivList, function(xx) c(xx$cp, sn::cp2dp(xx$cp, family='SN'))))
+```
+
+```{r simPost, eval=FALSE, include=FALSE}
+
+# Nsim = 50000
+# sampleTildeVec = sn::rsn(Nsim * nrow(fitUniv), fitUniv[,'xi'], fitUniv[,'omega'], fitUniv[,'alpha'])
+# sampleTilde = matrix(sampleTildeVec, nrow=nrow(fitUniv))
+# sampleOrig = t(eigenTwo$vectors %*% sampleTilde)
+# 
+# 
+# theDelta = fitUniv[,'alpha']/sqrt(1 + fitUniv[,'alpha']^2)
+# theModeMsn = fitUniv[,'xi'] + fitUniv[,'omega'] * (
+#   sqrt(2/pi)*theDelta + 
+#   (1-pi/4) * ( sqrt(2/pi) * theDelta )^3 / (1-theDelta^2 * 2/pi ) - 
+#   sign(fitUniv[,'alpha']/2)*exp(-2 * pi/abs(fitUniv[,'alpha']))
+# )
+# theModeMsnOrig = eigenTwo$vectors %*% theModeMsn
+```
+
+
+
+
+```{r doesntwork, include=FALSE, eval=FALSE}
+# doesn't work, with weights
+# theSnFit = sn::msn.mle(
+#   x = matrix(1,nrow(sampleValues), 1),
+#   y=sampleValues, 
+#   opt.method='CG', 
+#   w = theW,
+#   start = list(
+#     beta = matrix(fitUniv[,'xi'], 1,length(theMeanTilde)),
+#     Omega = diag(fitUniv[,'omega']^2),
+#     alpha = fitUniv[,'alpha']
+#   ),
+#   trace = TRUE,
+#   control=list(
+#    reltol = 1e-20, maxit = 3000, parscale = rep(c(1, 1), each=length(theMeanTilde)))
+# )
+# theSnFit$dp$xi = drop(theSnFit$dp$beta)
+# theSnFit$dp$Omega = (theSnFit$dp$Omega + t(theSnFit$dp$Omega))/2
+# 
+
+
+
+```
+
+
+
+
+
+
+```{r allHIst, fig.height=3, fig.width=3, fig.cap='mcmc (hist), normal (red), sn (blue)', fig.subcap = 1:length(res$mod$modesandhessians$mode[[1]])}
+# par(mar = c(1.5, 0, 0,0), bty='n', mgp=c(0.5, 0.2, 0))
+# Scol = c(plain = 'red', fast = 'blue', full='green', inla = 'black')
+# 
+# allInla = c(fitInla$marginals.random$ID, fitInla$marginals.fixed)
+# 
+# for(D in 1:length(res$mod$modesandhessians$mode[[Dconfig]])) {
+# 
+# Sx1 = quantile(allSamples[,D], c(0.001, 0.999))
+# Sx= seq(Sx1[1], Sx1[2], len=1001)
+# 
+# densHere = density(allSamples[,D])
+# 
+#   theY = cbind(
+#     plain = dnorm(Sx, 
+#       mean=res$mod$modesandhessians$mode[[Dconfig]][D], 
+#       sd=sqrt(solve(res$mod$modesandhessians$H[[Dconfig]])[D,D])
+#     ),
+#     fast = dnorm(Sx,
+#       mean = newMeanAllFast$mean[D,'meanOrig'],
+#       sd = sqrt(newMeanAllFast$var[D,D])
+#     ),
+#     full = dnorm(Sx,
+#       mean = newMeanAll$mean[D,'meanOrig'],
+#       sd = sqrt(newMeanAll$var[D,D])
+#     ),
+#     inla = INLA::inla.dmarginal(Sx, allInla[[D]])
+#   )
+# 
+#   toKeep = allSamples[,D] > min(Sx) & allSamples[,D] < max(Sx)
+#     hist(allSamples[toKeep,D], prob=TRUE, 
+#       breaks =
+#      seq(min(Sx), max(Sx), len=31), 
+#       main='', 
+#       border=0, ylim = c(0, max(theY, na.rm=TRUE)),
+#       xlab='', ylab='', yaxt='n')
+# 
+#   matlines(Sx, theY[,names(Scol)], lty=1, col=Scol)
+# 
+# 
+#   abline(v=mean(allSamples[,D]), col='black', lty=3)
+# 
+# }
+#plot(1, type='n', xaxt='n')
+#legend('top', lty=1, lwd=3, col=Scol, legend = names(Scol), cex=3, bty='n')
+
+```
+
+
+
+```{r checkMode, eval=FALSE, include=FALSE}
+
+# theDist1 = sqrt(apply( (allSamples - matrix(
+#     res$mod$modesandhessians$mode[[Dconfig]], nrow(allSamples), ncol(allSamples), byrow=TRUE
+#   ))^2, 1, sum))
+# theDist2 = sqrt(apply( (allSamples - matrix(
+#     apply(sampleOrig, 2, mean), nrow(allSamples), ncol(allSamples), byrow=TRUE
+#   ))^2, 1, sum))
+# theDist3 = sqrt(apply( (allSamples - matrix(
+# theModeMsnOrig,nrow(allSamples), ncol(allSamples), byrow=TRUE
+#   ))^2, 1, sum))
+# table(mode=theDist1 < 8, snmean = theDist2 < 8)
+# table(mode=theDist1 < 8, snmode = theDist3 < 8)
+# 
+# plot(modeTilde, theModeMsn);abline(1,1)
+
+```
+
+
+
+```{r importancesample, include=FALSE, eval=FALSE}
+# independent proposal distribution
+
+# pow = 0.95 # <1 for heavier tails
+# Nsample = 20000
+# probKeep = 1-1e-4
+# 
+# forIS = exp(forOrthog3/pow)
+# forIS = forIS / matrix(apply(forIS, 2, sum), nrow(forIS), ncol(forIS), byrow=TRUE)
+# 
+# 
+# if(requireNamespace("qrng", quietly=TRUE)) {
+#   # complicated way, pseudo-random numbers, spread out the random numbers
+# sampleQ = qrng::ghalton(Nsample, d=ncol(forOrthog3))
+# sampleIndex = 0*sampleQ
+# 
+# forIsC = apply(forIS, 2, cumsum)
+# 
+# 
+# Sindex = 1:nrow(forIsC)
+# for(D in 1:ncol(sampleQ)) {
+# 
+# theInterpFun = suppressWarnings(approxfun(forIsC[,D], Sindex, method='constant'))
+# sampleIndex[,D] = pmax(1,pmin(nrow(forIsC), theInterpFun(sampleQ[ ,D]), na.rm=TRUE), na.rm=TRUE)
+# 
+# }
+# # the easy way
+# } else {
+# sampleIndex = apply(forIS, 2, function(xx) {
+#   sample(length(xx), Nsample, replace=TRUE, prob=xx)
+# })
+# }
+# 
+# sampleProbs = mapply(function(probs, index) {
+#   print(table(is.na(probs[index])))
+#   probs[index]
+# }, 
+# probs = as.list(as.data.frame(forIS)),
+# index= as.list(as.data.frame(sampleIndex))
+# )
+# 
+# sampleLogProb = apply(log(sampleProbs), 1, sum)
+# 
+# sampleValues = mapply(function(values, index) {
+#   values[index]
+# }, 
+# values = as.list(as.data.frame(allX)),
+# index= as.list(as.data.frame(sampleIndex))
+# )
+# 
+# sampleValuesOrig = t(tcrossprod(eigenTwo$vectors, sampleValues))
+# 
+# densData = -mapply(theDens$fn, 
+#   x = as.list(as.data.frame(t(cbind(sampleValuesOrig, res$mod$modesandhessians$theta[Dconfig]))))
+# )
+# 
+# 
+# 
+# 
+# theProb = exp(densData - sampleLogProb)
+# theProb = theProb / sum(theProb)
+# theW= theProb * length(theProb)
+# 
+# 
+# # IS mean
+# theMeanTilde = apply(sampleValues * theProb, 2, sum)
+# theMean = apply(sampleValuesOrig *theProb, 2, sum)
+# # IS variance
+# theCovTilde = stats::cov.wt(sampleValues, theProb)$cov
+# theCov = stats::cov.wt(samplesValuesOrig, theProb)$cov
+# # IS third moment
+# the3 = apply(samplesValuesOrig^3 *theProb, 2, sum)
+# the3Tilde = apply(sampleValues^3 *theProb, 2, sum)
+# 
+# theMeanWithTheta = c(theMean,  res$mod$modesandhessians$theta[Dconfig])
+# 
+# derivOneAtMean = theDens$gr(theMeanWithTheta)[indexSeq]  
+# derivOneAtMeanTilde = drop(crossprod(eigenTwo$vectors, derivOneAtMean))
+# 
+# theHessianAtMean = theDens$he(
+#     theMeanWithTheta
+#   )[indexSeq, indexSeq]  
+# theVarAtMean = solve(theHessianAtMean)
+# theHessianAtMeanTilde = crossprod(eigenTwo$vectors, theHessianAtMean) %*% eigenTwo$vectors
+# 
+# eigenAtMean = eigen(theHessianAtMean)
+# drop(crossprod(eigenAtMean$vectors, derivOneAtMean))
+```
+
+
+
+
+
+
+
+
+
 
